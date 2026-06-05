@@ -1,0 +1,3979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Schools catchment area dashboard — NCR, Philippines. WTA Labs.">
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<!-- MapLibre GL JS v4.7.1 -->
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<!-- Turf.js for geometry operations -->
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+<!-- Local data files (EPSG:4326 GeoJSON) — no OL dependency -->
+<script src="layers/Water_0.js"></script>
+<script src="layers/NCR_1.js"></script>
+<script src="layers/CitiesMM_4.js"></script>
+<script src="layers/SAWalk_0.js"></script>
+<script src="layers/01SchoolsFuzzyAll102Bcopy_1.js"></script>
+<script src="layers/Baramgays_inSAWalk_1.js"></script>
+<script src="layers/BarangaysNCR_0.js"></script>
+<script src="layers/PopBgyClipped_WalkZ1_0.js"></script>
+<script src="layers/PopDiffWalk_Bgy_1.js"></script>
+
+<!-- MB barangay layers — 18 separate files by city, combined at runtime -->
+<script src="layers/MB_CityofCaloocan.js"></script>
+<script src="layers/MB_CityofLasPinas.js"></script>
+<script src="layers/MB_CityofMakati.js"></script>
+<script src="layers/MB_CityofMalabon.js"></script>
+<script src="layers/MB_CityofMandaluyong.js"></script>
+<script src="layers/MB_CityofManila.js"></script>
+<script src="layers/MB_CityofMarikina.js"></script>
+<script src="layers/MB_CityofMuntinlupa.js"></script>
+<script src="layers/MB_CityofNavotas.js"></script>
+<script src="layers/MB_CityofParanaque.js"></script>
+<script src="layers/MB_CityofPasig.js"></script>
+<script src="layers/MB_CityofSanJuan.js"></script>
+<script src="layers/MB_CityofTaguig.js"></script>
+<script src="layers/MB_CityofValenzuela.js"></script>
+<script src="layers/MB_NULL.js"></script>
+<script src="layers/MB_PasayCity.js"></script>
+<script src="layers/MB_Pateros.js"></script>
+<script src="layers/MB_QuezonCity.js"></script>
+
+<title>Schools Catchment Dashboard — NCR · WTA Labs</title>
+
+<style>
+/* ══════════════════════════════════════════
+   §0  TOKENS — WTA Labs
+══════════════════════════════════════════ */
+:root {
+  --y:          #FFCF00;
+  --y-d:        #e0b800;
+  --panel:      rgba(237,235,235,0.82);
+  --txt:        #000000;
+  --txt-mid:    rgb(89,89,89);
+  --bdr:        rgba(0,0,0,0.08);
+  --shdw:       0 8px 32px rgba(0,0,0,0.14);
+  --r:          12px;
+  --ease:       cubic-bezier(0.645,0.045,0.355,1);
+  --f-display:  'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --f-body:     'Inter', 'Helvetica Neue', sans-serif;
+  --f-head:     'Inter', 'Helvetica Neue', sans-serif;
+  --f-mono:     'JetBrains Mono', 'Courier New', monospace;
+  --glass-bg:   rgba(240,238,238,0.48);
+  --glass-bdr:  rgba(255,255,255,0.68);
+  --glass-blur: blur(26px) saturate(2);
+  --lp-w:       252px;
+  --rp-w:       280px;
+}
+
+/* ══════════════════════════════════════════
+   §1  BASE RESET
+══════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
+  font-family: var(--f-body); font-size: 13px; color: var(--txt); }
+
+/* ══════════════════════════════════════════
+   §2  LOADING SCREEN
+══════════════════════════════════════════ */
+#ls {
+  position: fixed; inset: 0; background: #fff;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 20px; z-index: 9000;
+  transition: opacity .45s var(--ease);
+}
+#ls.out { opacity: 0; pointer-events: none; }
+#ls-logo { max-width: 33vw; width: auto; height: auto; object-fit: contain; }
+#ls-logo-fb { display: none; font-family: var(--f-head); font-weight: 700;
+  font-size: 1.8rem; letter-spacing: .04em; }
+#ls-logo-fb span { color: var(--y); }
+#ls-track { width: 220px; height: 4px; background: rgba(0,0,0,.1);
+  border-radius: 2px; overflow: hidden; }
+#ls-bar { height: 100%; width: 0%; background: var(--y);
+  border-radius: 2px; transition: width .3s var(--ease);
+  animation: lsprog 3s var(--ease) forwards; }
+@keyframes lsprog { 0%{width:0%} 70%{width:72%} 100%{width:88%} }
+#ls-lbl { font-family: var(--f-mono); font-size: .7rem; color: var(--txt-mid);
+  letter-spacing: .1em; text-transform: uppercase; }
+
+/* ══════════════════════════════════════════
+   §3  HOME SCREEN
+══════════════════════════════════════════ */
+#home {
+  position: fixed; inset: 0; z-index: 8000;
+  display: flex; pointer-events: auto;
+  transition: opacity .6s var(--ease);
+}
+#home.fade-out { opacity: 0; pointer-events: none; }
+
+#home-left {
+  width: 46%; position: relative; z-index: 2;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 60px;
+  background: linear-gradient(to right,
+    #fff 0%, #fff 45%,
+    rgba(255,255,255,0.55) 72%,
+    rgba(255,255,255,0) 100%);
+  overflow: hidden;
+  transition: transform .65s var(--ease);
+}
+#home-left::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background-image: radial-gradient(circle, rgba(0,0,0,.045) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+#home-left.out { transform: translateX(-100%); }
+
+#home-right { flex: 1; position: relative; z-index: 1; }
+#home-right-fade {
+  position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  background: linear-gradient(to right, rgba(240,246,244,.1) 0%, transparent 40%);
+}
+
+#home-logo-top {
+  height: 180px; object-fit: contain; margin-bottom: 28px; margin-top: -100px;
+  opacity: .94; align-self: flex-start; max-width: 100%;
+}
+
+/* Corner logo — lower left, replaces zoom control */
+#corner-logo {
+  position: absolute; bottom: 30px; left: 14px; z-index: 300;
+  pointer-events: auto; user-select: none;
+  opacity: 0; transform: translateY(6px);
+  transition: opacity .55s var(--ease) .55s, transform .55s var(--ease) .55s;
+}
+#corner-logo.in { opacity: 0.72; transform: none; }
+#corner-logo a { display: block; line-height: 0; }
+#corner-logo img {
+  height: 34px; width: auto; object-fit: contain; display: block;
+  transition: opacity .18s var(--ease);
+}
+#corner-logo a:hover img { opacity: 1; }
+#corner-logo a:hover { cursor: pointer; }
+#home-by {
+  font-family: var(--f-mono); font-size: .7rem; font-weight: 500;
+  letter-spacing: .15em; text-transform: uppercase;
+  color: var(--txt-mid); margin-bottom: 20px;
+  position: relative; z-index: 1;
+}
+#home-title {
+  font-family: var(--f-display); font-weight: 900;
+  font-size: 2.8rem; line-height: 1.1;
+  color: var(--txt); margin-bottom: 8px;
+  position: relative; z-index: 1;
+}
+#home-title span { color: var(--y-d); }
+#home-sub {
+  font-family: var(--f-body); font-size: .92rem; color: var(--txt-mid);
+  line-height: 1.65; max-width: 340px; margin-bottom: 52px;
+  position: relative; z-index: 1;
+}
+#home-btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: var(--y); color: var(--txt);
+  font-family: var(--f-head); font-weight: 700;
+  font-size: .82rem; letter-spacing: .06em; text-transform: uppercase;
+  border: none; border-radius: 50px;
+  padding: 13px 26px; cursor: pointer;
+  box-shadow: var(--shdw); align-self: flex-start;
+  position: relative; z-index: 1;
+  transition: background .15s, transform .18s var(--ease), box-shadow .18s;
+}
+#home-btn:hover  { background: var(--y-d); transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(0,0,0,.22); }
+#home-btn:active { transform: translateY(0); }
+#home-btn svg    { width: 15px; height: 15px; }
+
+/* ══════════════════════════════════════════
+   §4  APP SHELL
+══════════════════════════════════════════ */
+#app { position: fixed; inset: 0; }
+
+/* ── Floating map title ── */
+#map-title {
+  position: absolute; top: 14px; left: 30px; z-index: 300;
+  pointer-events: none; user-select: none;
+  opacity: 0; transform: translateY(-8px);
+  transition: opacity .5s var(--ease), transform .5s var(--ease);
+}
+#map-title.in { opacity: 1; transform: none; }
+.mt-title {
+  font-family: var(--f-display); font-weight: 900;
+  font-size: 1.5rem; line-height: 1.15; color: #000;
+  text-shadow:
+    0 0 20px rgba(255,255,255,1),
+    0 1px 6px rgba(255,255,255,0.95),
+    0 2px 14px rgba(255,255,255,0.7);
+  margin-bottom: 3px;
+}
+.mt-subtitle {
+  font-family: var(--f-body); font-weight: 600;
+  font-size: .8rem; line-height: 1.3; color: var(--txt-mid);
+  text-shadow: 0 1px 5px rgba(255,255,255,0.95), 0 0 10px rgba(255,255,255,0.7);
+  margin-bottom: 5px;
+}
+.mt-sub {
+  font-family: var(--f-mono); font-size: .62rem; font-weight: 500;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--txt-mid);
+  text-shadow: 0 1px 5px rgba(255,255,255,0.95), 0 0 10px rgba(255,255,255,0.7);
+}
+
+/* ── Left column wrapper (stacks About + Layers panels) ── */
+#lp-wrap {
+  position: absolute; top: 108px; left: 14px; z-index: 200;
+  width: var(--lp-w);
+  display: flex; flex-direction: column; gap: 10px;
+  max-height: calc(100vh - 130px);
+  pointer-events: none;
+}
+
+/* ── About panel (top left card) ── */
+#about-panel {
+  width: 100%; flex-shrink: 0;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-bdr);
+  border-radius: 14px; box-shadow: var(--shdw);
+  overflow: hidden;
+  pointer-events: auto;
+  opacity: 0; transform: translateY(-10px) scale(0.98);
+  transition: opacity .5s var(--ease), transform .5s var(--ease);
+}
+#about-panel.in { opacity: 1; transform: none; }
+
+/* ── Layers panel ── */
+#lp {
+  width: 100%; min-height: 0; flex: 1;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-bdr);
+  border-radius: 14px; box-shadow: var(--shdw);
+  display: flex; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden;
+  pointer-events: auto;
+  opacity: 0; transform: translateY(-10px) scale(0.98);
+  transition: opacity .5s var(--ease), transform .5s var(--ease);
+}
+#lp.in { opacity: 1; transform: none; }
+#lp::-webkit-scrollbar { width: 3px; }
+#lp::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 2px; }
+
+.lp-sec { padding: 13px 15px; border-bottom: 1px solid var(--bdr); }
+.lp-sec:last-child { border-bottom: none; }
+.lp-hd {
+  font-family: var(--f-head); font-weight: 700;
+  font-size: .6rem; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--txt-mid); margin-bottom: 9px;
+}
+#title-card { background: var(--y); border-radius: var(--r); padding: 14px 15px; margin: 13px 15px 0; }
+#title-card h1 { font-family: var(--f-display); font-weight: 900;
+  font-size: 1rem; line-height: 1.3; color: var(--txt); margin-bottom: 4px; }
+#title-card .tc-sub { font-family: var(--f-mono); font-size: .63rem;
+  letter-spacing: .09em; color: rgba(0,0,0,.5); text-transform: uppercase; }
+.ctx { font-size: .8rem; line-height: 1.65; color: var(--txt-mid); }
+
+/* ── Collapsible LP section headers ── */
+.lp-hd {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.lp-collapse-btn {
+  background: none; border: none; cursor: pointer; padding: 0 2px;
+  color: var(--txt-mid); flex-shrink: 0; line-height: 1;
+  transition: transform .22s var(--ease), color .15s;
+}
+.lp-collapse-btn:hover { color: var(--txt); }
+.lp-collapse-btn svg { display: block; width: 13px; height: 13px; }
+.lp-sec.collapsed .lp-collapse-btn { transform: rotate(-90deg); }
+.lp-sec.collapsed .lp-sec-body { display: none; }
+
+/* Layer rows */
+.lyr { display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 0; border-bottom: 1px solid rgba(0,0,0,.06); }
+.lyr:last-child { border-bottom: none; }
+.lyr-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.lyr-info img { width: 20px; height: 20px; object-fit: contain; flex-shrink: 0; }
+.lyr-name { font-size: .82rem; min-width: 0; line-height: 1.35; }
+
+/* Toggle switch */
+.tog { display: flex; align-items: center; cursor: pointer; user-select: none; }
+.tog input { display: none; }
+.tog-track { position: relative; width: 32px; height: 18px;
+  background: rgba(0,0,0,.2); border-radius: 9px; flex-shrink: 0;
+  transition: background .2s var(--ease); }
+.tog input:checked ~ .tog-track { background: var(--y); }
+.tog-thumb { position: absolute; top: 3px; left: 3px;
+  width: 12px; height: 12px; background: #fff;
+  border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+  transition: transform .2s var(--ease); }
+.tog input:checked ~ .tog-track .tog-thumb { transform: translateX(14px); }
+
+/* ── Map wrapper ── */
+#mw { position: absolute; inset: 0; overflow: hidden; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ── Right panel column — wrapper positions both panels as a flex column ── */
+#rp-wrap {
+  position: absolute; top: 57px; right: 14px;
+  width: var(--rp-w); z-index: 200;
+  display: flex; flex-direction: column; gap: 10px;
+  /* total column height: full viewport minus nav bar + bottom chrome */
+  max-height: calc(100vh - 80px);
+  pointer-events: none; /* children opt-in individually */
+}
+
+/* ── Properties panel — upper half ── */
+#rp {
+  width: 100%;
+  max-height: 50vh;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-bdr);
+  border-radius: 14px; box-shadow: var(--shdw);
+  display: flex; flex-direction: column;
+  overflow: hidden; flex-shrink: 0;
+  pointer-events: auto;
+  opacity: 0; transform: translateY(-10px) scale(0.98);
+  transition: opacity .5s var(--ease) .12s, transform .5s var(--ease) .12s;
+}
+#rp.in { opacity: 1; transform: none; }
+.rp-hdr { padding: 12px 15px; border-bottom: 1px solid var(--bdr);
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.rp-title { font-family: var(--f-head); font-weight: 700; font-size: .78rem; flex: 1; }
+.rp-badge { font-family: var(--f-mono); font-size: .6rem;
+  background: var(--y); border-radius: 3px; padding: 2px 7px; letter-spacing: .06em; }
+/* Deselect button inside the Properties panel header */
+.rp-deselect {
+  background: #3a3a3a; color: #ffffff; border: none;
+  border-radius: 20px; padding: 3px 9px;
+  font-family: var(--f-body); font-size: .63rem; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase;
+  cursor: pointer; flex-shrink: 0; line-height: 1.4;
+  transition: background .15s;
+}
+.rp-deselect:hover,
+.rp-deselect.deselect-features-btn:hover { background: #111111; color: #ffffff !important; }
+#rp-empty { display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  flex: 1; gap: 12px; padding: 32px 20px; color: var(--txt-mid); text-align: center; }
+#rp-empty svg { opacity: .25; }
+#rp-empty p { font-size: .8rem; line-height: 1.6; }
+#rp-body { flex: 1; min-height: 0; overflow-y: auto; display: none; }
+#rp-body.on { display: block; }
+
+/* Properties table */
+.prop-layer {
+  font-family: var(--f-head); font-weight: 700; font-size: .95rem;
+  padding: 11px 15px 8px;
+  background: rgba(255,207,0,.15); border-bottom: 2px solid var(--y);
+}
+.prop-row {
+  display: flex; padding: 6px 15px;
+  border-bottom: 1px solid var(--bdr); gap: 8px;
+}
+.prop-row:last-child { border-bottom: none; }
+.prop-key { font-family: var(--f-head); font-size: .67rem; font-weight: 700;
+  color: var(--txt-mid); min-width: 90px; flex-shrink: 0; padding-top: 1px; }
+.prop-val { font-size: .76rem; color: var(--txt); word-break: break-word; }
+/* Group section heading — used in bgycatch panel */
+.prop-group {
+  font-family: var(--f-head); font-size: .62rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em; color: var(--txt-mid);
+  padding: 9px 15px 3px; background: rgba(0,0,0,0.03);
+  border-top: 1px solid var(--bdr); border-bottom: 1px solid var(--bdr);
+  margin-top: 2px;
+}
+/* Indented sub-rows inside a group */
+.prop-row.prop-sub { padding-left: 22px; }
+.prop-row.prop-sub .prop-key { min-width: 80px; font-weight: 600; }
+/* Inline bar chart — used in bgycatch catchment panel */
+.catch-bar-wrap { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }
+.catch-bar-num  { font-size: .76rem; color: var(--txt); white-space: nowrap; }
+.catch-bar      { flex: 1; height: 5px; background: rgba(0,0,0,0.10);
+                  border-radius: 3px; overflow: hidden; min-width: 32px; }
+.catch-bar-fill { height: 100%; background: var(--y); border-radius: 3px; }
+.catch-bar-pct  { font-family: var(--f-mono); font-size: .62rem; color: var(--txt-mid);
+                  white-space: nowrap; min-width: 30px; text-align: right; }
+
+/* ══════════════════════════════════════════
+   §5  FLOATING TOP NAV
+══════════════════════════════════════════ */
+#tnav {
+  position: fixed; top: 14px; left: 50%; translate: -50% 0;
+  z-index: 500; display: flex; align-items: center; gap: 7px;
+  opacity: 0; transform: translateY(-18px);
+  transition: opacity .45s var(--ease) .1s, transform .45s var(--ease) .1s;
+}
+#tnav.in { opacity: 1; transform: translateY(0); }
+.pill {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-bdr);
+  border-radius: 28px; box-shadow: var(--shdw);
+  display: flex; align-items: center; gap: 5px;
+  padding: 9px 16px; white-space: nowrap;
+}
+.pill-lbl { font-family: var(--f-head); font-weight: 700;
+  font-size: .72rem; letter-spacing: .10em; text-transform: uppercase;
+  color: var(--txt-mid); padding-right: 9px; border-right: 1px solid var(--bdr); margin-right: 2px; }
+.pill-sep { width: 1px; height: 18px; background: var(--bdr); margin: 0 3px; }
+.ntog { display: flex; align-items: center; gap: 4px; }
+.ntog-lbl { font-size: .8rem; color: var(--txt); }
+.vbtn {
+  font-family: var(--f-head); font-weight: 700; font-size: .85rem;
+  letter-spacing: .03em; background: transparent;
+  border: 1px solid transparent; border-radius: 50px;
+  padding: 7px 16px; cursor: pointer; color: var(--txt-mid);
+  transition: background .14s, color .14s;
+}
+.vbtn:hover { background: rgba(0,0,0,.06); color: var(--txt); }
+.vbtn.on { background: var(--y); color: var(--txt); }
+.fsel {
+  font-family: var(--f-body); font-size: .88rem;
+  background: transparent; border: none; outline: none;
+  cursor: pointer; color: var(--txt); max-width: 165px;
+}
+
+/* ══════════════════════════════════════════
+   §6  MAP OVERLAYS
+══════════════════════════════════════════ */
+
+/* Legend colour swatch (inline square) */
+.leg-swatch {
+  width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.15); display: inline-block;
+}
+
+/* ── Base Layer Panel — horizontal pill below top nav ── */
+#blp {
+  position: fixed; top: 72px; left: 50%;
+  display: flex; align-items: center; gap: 2px;
+  padding: 5px 12px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-bdr);
+  border-radius: 22px; box-shadow: var(--shdw);
+  z-index: 490; white-space: nowrap;
+  opacity: 0; transform: translateX(-50%) translateY(-8px);
+  transition: opacity .5s var(--ease) .06s, transform .5s var(--ease) .06s;
+}
+#blp.in { opacity: 1; transform: translateX(-50%); }
+/* Section label — "Basemap" / "Layers" micro text */
+.blp-sect-lbl {
+  font-family: var(--f-mono); font-size: .52rem; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: rgba(89,89,89,0.55);
+  margin-right: 3px; flex-shrink: 0;
+}
+/* Vertical divider between basemap group and layers group */
+.blp-sep-v {
+  width: 1px; height: 16px; background: var(--bdr);
+  margin: 0 8px; flex-shrink: 0;
+}
+/* Inline checkbox row */
+.blp-chk {
+  display: flex; align-items: center; gap: 5px;
+  font-family: var(--f-body); font-size: .76rem; color: var(--txt);
+  cursor: pointer; padding: 3px 7px; border-radius: 6px;
+  transition: background .12s; user-select: none;
+}
+.blp-chk:hover { background: rgba(0,0,0,0.06); }
+.blp-chk input[type="checkbox"] {
+  accent-color: var(--y); cursor: pointer;
+  flex-shrink: 0; width: 13px; height: 13px; margin: 0;
+}
+/* Basemap buttons inside #blp — override the standalone .bm-switcher block */
+#blp .bm-switcher { display: flex; gap: 2px; padding: 0; border-bottom: none; }
+#blp .bm-btn { flex: none; padding: 3px 9px; font-size: .56rem; }
+
+/* View pill badge */
+.v-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--y); color: #000; font-family: var(--f-mono);
+  font-size: .55rem; font-weight: 700; line-height: 1;
+  width: 15px; height: 15px; border-radius: 50%; margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* Hover tooltip — floating glassmorphic card */
+#hover-tip {
+  position: fixed; z-index: 600; pointer-events: none;
+  padding: 9px 30px 9px 12px; min-width: 160px; max-width: 260px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-bdr);
+  border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.16);
+  font-family: var(--f-body); font-size: .76rem; color: var(--txt);
+  opacity: 0; transition: opacity .12s ease;
+  display: none;
+}
+#hover-tip.vis { display: block; opacity: 1; }
+#hover-tip .ht-row { display: flex; gap: 6px; margin-bottom: 3px; line-height: 1.35; }
+#hover-tip .ht-row:last-child { margin-bottom: 0; }
+#hover-tip .ht-key {
+  color: var(--txt-mid); font-size: .68rem; flex-shrink: 0;
+  padding-top: 1px; min-width: 70px;
+}
+#hover-tip .ht-val { font-weight: 500; word-break: break-word; }
+#hover-tip .ht-hint {
+  font-family: var(--f-body); font-size: .68rem; color: var(--txt-mid);
+  font-style: italic; margin-top: 5px; padding-top: 5px;
+  border-top: 1px solid rgba(0,0,0,0.08);
+}
+/* Coloured indicator dot — inside tooltip, top-right corner */
+#hover-tip .ht-dot {
+  position: absolute; top: 9px; right: 10px;
+  width: 13px; height: 13px; border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+  pointer-events: none;
+}
+#hover-tip .ht-title {
+  font-weight: 700; font-size: .8rem; margin-bottom: 6px;
+  padding-bottom: 5px; border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+/* Stacked single-column layout — used for barangay tooltip fields */
+#hover-tip .ht-field { margin-bottom: 9px; }
+#hover-tip .ht-field:last-of-type { margin-bottom: 0; }
+#hover-tip .ht-lbl {
+  display: block; font-size: .65rem; color: var(--txt-mid);
+  letter-spacing: .03em; line-height: 1; margin-bottom: 2px;
+}
+#hover-tip .ht-name {
+  display: block; font-family: 'Inter', 'Helvetica Neue', sans-serif;
+  font-weight: 700; font-size: .88rem; color: #000; line-height: 1.25;
+}
+
+/* ── School name HTML label overlay ── */
+#school-labels-container {
+  position: absolute; inset: 0; z-index: 250;
+  pointer-events: none; overflow: hidden;
+}
+.school-lbl {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 8.5px; font-weight: 500; letter-spacing: .02em;
+  color: rgba(58,42,0,0.9);
+  text-shadow: 0 0 4px rgba(255,255,255,0.97), 0 0 10px rgba(255,255,255,0.8);
+  white-space: nowrap; pointer-events: none;
+}
+
+/* ── 15-min catchment HTML overlay label ── */
+#catch-label {
+  position: fixed; z-index: 550; pointer-events: none;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: rgba(92,66,10,0.88);
+  text-shadow: 0 0 6px rgba(255,255,255,0.9), 0 0 14px rgba(255,255,255,0.7);
+  opacity: 0; transition: opacity .18s ease;
+  display: none;
+}
+#catch-label.vis { display: block; opacity: 0.25; }
+#catch-label .clbl-school {
+  display: block;
+  font-family: var(--f-body); font-size: .8rem; font-weight: 700;
+  letter-spacing: .04em; white-space: nowrap; margin-bottom: 2px;
+}
+#catch-label .clbl-tag {
+  display: block;
+  font-family: var(--f-body); font-size: .65rem; font-weight: 500;
+  letter-spacing: .22em; text-transform: uppercase; white-space: nowrap;
+}
+
+/* ── Basemap switcher row ── */
+.bm-switcher { display: flex; gap: 3px; padding: 7px 8px 5px; border-bottom: 1px solid var(--bdr); }
+.bm-btn {
+  flex: 1; padding: 3px 2px;
+  font-family: var(--f-mono); font-size: .5rem; font-weight: 600;
+  letter-spacing: .05em; text-transform: uppercase;
+  background: rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.09);
+  border-radius: 5px; cursor: pointer; color: var(--txt-mid);
+  transition: background .13s ease, color .13s ease;
+  white-space: nowrap;
+}
+.bm-btn:hover { background: rgba(0,0,0,0.09); color: var(--txt); }
+.bm-btn.on { background: var(--y); color: #000; border-color: transparent; font-weight: 700; }
+
+/* ── School-level toggle color overrides ── */
+#lv-es:checked      ~ .tog-track { background: #F28C28; }
+#lv-jhs:checked     ~ .tog-track { background: #C0392B; }
+#lv-shs:checked     ~ .tog-track { background: #1F618D; }
+#lv-jhs-shs:checked ~ .tog-track { background: #148F77; }
+#lv-multi:checked   ~ .tog-track { background: #7B1FA2; }
+#lv-none:checked    ~ .tog-track { background: #9E9E9E; }
+
+/* ── Catchment info panel — lower half, sits directly below #rp ── */
+#cp {
+  width: 100%;
+  /* fills remaining half of the viewport below the 50% mark */
+  max-height: calc(50vh - 20px);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-bdr);
+  border-radius: 14px; box-shadow: var(--shdw);
+  display: flex; flex-direction: column;
+  overflow: hidden; flex-shrink: 0;
+  opacity: 0; transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity .4s var(--ease), transform .4s var(--ease);
+}
+#cp.in { opacity: 1; transform: none; pointer-events: auto; }
+#cp-body { flex: 1; overflow-y: auto; }
+
+#cp-body::-webkit-scrollbar { width: 3px; }
+#cp-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 2px; }
+#cp-cols {
+  padding: 8px 12px 5px; border-bottom: 1px solid var(--bdr);
+  display: flex; flex-direction: column; gap: 3px;
+  max-height: 160px; overflow-y: auto;
+  background: rgba(255,255,255,0.18);
+}
+.cp-col-row {
+  display: flex; align-items: center; gap: 7px;
+  font-size: .74rem; color: var(--txt); cursor: pointer; padding: 2px 0;
+}
+.cp-col-row input { cursor: pointer; accent-color: var(--y); flex-shrink: 0; }
+.cp-gear {
+  background: none; border: 1px solid var(--bdr);
+  border-radius: 5px; padding: 2px 6px;
+  cursor: pointer; font-size: .76rem; color: var(--txt-mid);
+  transition: background .13s, color .13s; line-height: 1.2; flex-shrink: 0;
+}
+.cp-gear:hover { background: rgba(0,0,0,.07); color: var(--txt); }
+
+/* Corner micro-labels — quiet, no box */
+#data-src {
+  position: absolute; z-index: 400;
+  font-family: var(--f-mono); font-size: .57rem; letter-spacing: .07em;
+  color: rgba(89,89,89,0.45);
+  background: none; border: none; box-shadow: none; backdrop-filter: none;
+  padding: 0; user-select: none; pointer-events: none; white-space: nowrap;
+  bottom: 10px; left: 14px;
+}
+
+/* Bottom-right HUD — scale bar · zoom · coordinates */
+#br-hud {
+  position: absolute; bottom: 10px; right: 14px; z-index: 400;
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--f-mono); font-size: .57rem; letter-spacing: .07em;
+  color: rgba(89,89,89,0.45);
+  user-select: none; pointer-events: none; white-space: nowrap;
+}
+#zoom-disp { opacity: .8; }
+#scalebar-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+}
+#scalebar-line {
+  display: block; height: 0;
+  border-left: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  width: 60px; /* updated by JS */
+}
+#scalebar-lbl { font-size: .53rem; letter-spacing: .05em; }
+#coords { /* inherits from #br-hud */ }
+
+/* ══════════════════════════════════════════
+   §7  MAPLIBRE OVERRIDES
+══════════════════════════════════════════ */
+.maplibregl-map { font-family: var(--f-body); }
+/* Basemap canvas filters — removed for positron/osm; basemap muting handled via
+   MapLibre 'basemap-wash' fill layer so data layers are unaffected */
+#map[data-basemap="positron"] .maplibregl-canvas { filter: none; }
+#map[data-basemap="osm"]      .maplibregl-canvas { filter: none; }
+#map[data-basemap="satellite"] .maplibregl-canvas { filter: none; }
+.maplibregl-ctrl-group {
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  border: 1px solid var(--glass-bdr) !important;
+  border-radius: var(--r) !important;
+  box-shadow: var(--shdw) !important;
+}
+.maplibregl-ctrl-group button {
+  background: transparent !important;
+  border-radius: calc(var(--r) - 2px) !important;
+}
+.maplibregl-ctrl-group button:hover { background: rgba(0,0,0,.06) !important; }
+.maplibregl-ctrl span { filter: none !important; }
+/* Zoom control — bottom-left, raised above corner labels */
+.maplibregl-ctrl-bottom-left { bottom: 28px !important; left: 14px !important; }
+/* Attribution */
+.maplibregl-ctrl-bottom-right { bottom: 8px !important; right: 8px !important; }
+.maplibregl-ctrl-attrib {
+  font-family: var(--f-mono) !important; font-size: .62rem !important;
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur) !important;
+  border: 1px solid var(--glass-bdr) !important;
+  border-radius: var(--r) !important; padding: 2px 8px !important;
+}
+.maplibregl-ctrl-attrib a { color: var(--txt-mid) !important; }
+
+/* ══════════════════════════════════════════
+   §8  ACCESSIBILITY
+══════════════════════════════════════════ */
+.skip { position: absolute; top: -999px; left: 0;
+  background: var(--y); color: var(--txt);
+  padding: .5rem 1rem; z-index: 9999;
+  border-radius: 0 0 var(--r) 0;
+  font-family: var(--f-head); font-weight: 700;
+  font-size: .85rem; text-decoration: none; }
+.skip:focus { top: 0; }
+:focus-visible { outline: 2px solid var(--y); outline-offset: 2px; }
+
+/* ══════════════════════════════════════════
+   §9A  BARANGAY SEARCH BAR
+══════════════════════════════════════════ */
+#bgy-search-bar {
+  position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+  z-index: 300; display: flex; align-items: center;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-bdr);
+  border-radius: 24px; box-shadow: var(--shdw);
+  padding: 0 14px; gap: 8px; width: 390px;
+  opacity: 0; pointer-events: none;
+  transition: opacity .35s var(--ease), transform .35s var(--ease);
+}
+#bgy-search-bar.vis { opacity: 1; pointer-events: auto; }
+/* Deselect pill — sits to the right of the search bar, shares its vertical position */
+#bgy-deselect-btn {
+  position: absolute; bottom: 40px;
+  left: calc(50% + 207px); /* 195px = half of 390px bar + 12px gap */
+  z-index: 300;
+  background: #3a3a3a;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 24px; box-shadow: var(--shdw);
+  padding: 10px 16px;
+  font-family: var(--f-body); font-size: .65rem; font-weight: 600;
+  letter-spacing: .05em; text-transform: uppercase;
+  color: #ffffff; cursor: pointer; white-space: nowrap;
+  opacity: 0; pointer-events: none;
+  transition: opacity .35s var(--ease), background .15s;
+}
+#bgy-deselect-btn:hover { background: #222222; }
+#bgy-deselect-btn.vis { opacity: 1; pointer-events: auto; }
+#bgy-search-input {
+  flex: 1; border: none; background: transparent; outline: none;
+  font-family: var(--f-body); font-size: .82rem; color: var(--txt);
+  padding: 10px 0;
+}
+#bgy-search-input::placeholder { color: var(--txt-mid); }
+#bgy-search-icon { color: var(--txt-mid); flex-shrink: 0; display: flex; align-items: center; }
+#bgy-clear-btn {
+  background: none; border: none; cursor: pointer; padding: 2px;
+  color: var(--txt-mid); flex-shrink: 0; display: none; line-height: 0;
+  transition: color .13s;
+}
+#bgy-clear-btn:hover { color: var(--txt); }
+#bgy-clear-btn.vis { display: flex; align-items: center; }
+#bgy-autocomplete {
+  position: absolute; bottom: calc(100% + 8px); left: 0; right: 0;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-bdr);
+  border-radius: 12px; box-shadow: var(--shdw);
+  overflow-y: auto; max-height: 210px;
+  display: none;
+}
+#bgy-autocomplete.open { display: block; }
+.bgy-ac-item {
+  padding: 7px 14px; cursor: pointer;
+  border-bottom: 1px solid var(--bdr);
+  transition: background .1s;
+}
+.bgy-ac-item:last-child { border-bottom: none; }
+.bgy-ac-item:hover, .bgy-ac-item.focused { background: rgba(255,207,0,0.18); }
+.bgy-ac-name { font-size: .8rem; color: var(--txt); }
+.bgy-ac-mun { font-size: .63rem; color: var(--txt-mid); margin-top: 1px;
+  font-family: var(--f-mono); letter-spacing: .04em; }
+
+/* ── Barangay mode toggle buttons ── */
+.bgy-mode-group {
+  display: flex; gap: 4px; margin-top: 8px;
+}
+.bgy-mode-btn {
+  flex: 1; padding: 5px 6px;
+  font-family: var(--f-mono); font-size: .58rem; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase;
+  background: rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.09);
+  border-radius: 5px; cursor: pointer; color: var(--txt-mid);
+  transition: background .13s, color .13s; text-align: center;
+}
+.bgy-mode-btn:hover { background: rgba(0,0,0,0.09); color: var(--txt); }
+.bgy-mode-btn.on { background: var(--y); color: #000; border-color: transparent; font-weight: 700; }
+
+/* ── Density legend chips ── */
+.density-legend {
+  margin-top: 8px; display: flex; flex-direction: column; gap: 3px;
+}
+.den-row {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--f-mono); font-size: .62rem; color: var(--txt-mid);
+}
+.den-swatch {
+  width: 14px; height: 14px; border-radius: 2px; flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.15);
+}
+
+/* ── Search mode selector inside search bars ── */
+.search-mode-sel {
+  background: transparent; border: none; outline: none;
+  font-family: var(--f-mono); font-size: .62rem; font-weight: 600;
+  letter-spacing: .05em; text-transform: uppercase;
+  color: var(--txt-mid); cursor: pointer;
+  padding: 0; margin: 0 6px 0 0;
+  border-right: 1px solid var(--bdr); padding-right: 8px;
+  flex-shrink: 0; max-width: 96px;
+}
+.search-mode-sel:hover { color: var(--txt); }
+
+/* ── School deselect pill — Schools view, right of search bar ── */
+#school-deselect-btn {
+  position: absolute; bottom: 40px;
+  left: calc(50% + 222px); /* 210px = half of 420px bar + 12px gap */
+  z-index: 300;
+  background: #3a3a3a;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 24px; box-shadow: var(--shdw);
+  padding: 10px 16px;
+  font-family: var(--f-body); font-size: .65rem; font-weight: 600;
+  letter-spacing: .05em; text-transform: uppercase;
+  color: #ffffff; cursor: pointer; white-space: nowrap;
+  opacity: 0; pointer-events: none;
+  transition: opacity .35s var(--ease), background .15s;
+}
+#school-deselect-btn:hover { background: #222222; }
+#school-deselect-btn.vis { opacity: 1; pointer-events: auto; }
+
+/* ── Persistent school name label — centred on selected polygon, text only ── */
+#school-sel-label {
+  position: fixed; z-index: 550; pointer-events: none;
+  transform: translate(-50%, -50%);
+  font-family: var(--f-body); font-size: .8rem; font-weight: 700; color: #000;
+  text-align: center; max-width: 160px; word-break: break-word; line-height: 1.3;
+  text-shadow:
+    0 0 6px rgba(255,255,255,1),
+    0 0 12px rgba(255,255,255,0.9),
+    0 1px 4px rgba(255,255,255,0.8);
+  opacity: 0; display: none;
+  transition: opacity .18s ease;
+}
+#school-sel-label.vis { display: block; opacity: 1; }
+
+/* ── School search bar — centre bottom, visible in Schools view ── */
+#school-search-bar {
+  position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+  z-index: 300; display: flex; align-items: center;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-bdr);
+  border-radius: 28px; box-shadow: var(--shdw);
+  padding: 0 18px; gap: 10px; width: 420px;
+  opacity: 0; pointer-events: none;
+  transition: opacity .35s var(--ease);
+}
+#school-search-bar.vis { opacity: 1; pointer-events: auto; }
+#school-search-input {
+  flex: 1; border: none; background: transparent; outline: none;
+  font-family: var(--f-body); font-size: .86rem; color: var(--txt);
+  padding: 13px 0;
+}
+#school-search-input::placeholder { color: var(--txt-mid); }
+#school-clear-btn {
+  background: none; border: none; cursor: pointer; padding: 2px;
+  color: var(--txt-mid); flex-shrink: 0; display: none; line-height: 0;
+  transition: color .13s;
+}
+#school-clear-btn:hover { color: var(--txt); }
+#school-clear-btn.vis { display: flex; align-items: center; }
+#school-autocomplete {
+  position: absolute; bottom: calc(100% + 8px); left: 0; right: 0;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-bdr);
+  border-radius: 12px; box-shadow: var(--shdw);
+  overflow-y: auto; max-height: 220px; display: none;
+}
+#school-autocomplete.open { display: block; }
+.sch-ac-item {
+  padding: 7px 14px; cursor: pointer;
+  border-bottom: 1px solid var(--bdr);
+  transition: background .1s;
+}
+.sch-ac-item:last-child { border-bottom: none; }
+.sch-ac-item:hover, .sch-ac-item.focused { background: rgba(255,207,0,0.18); }
+.sch-ac-name { font-size: .8rem; color: var(--txt); }
+.sch-ac-sub  { font-size: .63rem; color: var(--txt-mid); margin-top: 1px;
+  font-family: var(--f-mono); letter-spacing: .04em; }
+
+/* ── LP section show/hide per view ── */
+.lp-sec[data-show-in] { display: none; }
+
+/* ── Deselect / Reset inline bar buttons ── */
+.search-bar-sep {
+  width: 1px; height: 16px; flex-shrink: 0;
+  background: rgba(0,0,0,0.12); align-self: center;
+}
+.deselect-features-btn {
+  background: none; border: none; padding: 0 10px 0 8px;
+  font-family: var(--f-body); font-size: .65rem; font-weight: 600;
+  letter-spacing: .05em; text-transform: uppercase;
+  color: var(--txt-mid); cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  transition: color .12s;
+}
+.deselect-features-btn:hover { color: var(--txt); }
+
+/* ── Reset toggles button (left panel bottom) ── */
+#reset-toggles-btn {
+  display: block; width: 100%;
+  padding: 7px 0; margin: 0;
+  background: none; border: 1px solid var(--bdr);
+  border-radius: 7px; cursor: pointer;
+  font-family: var(--f-body); font-size: .68rem;
+  font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--txt-mid);
+  transition: background .14s, color .14s;
+}
+#reset-toggles-btn:hover { background: rgba(0,0,0,0.06); color: var(--txt); }
+
+/* ══════════════════════════════════════════
+   §9  RESPONSIVE
+══════════════════════════════════════════ */
+@media (max-width: 700px) {
+  #lp-wrap { width: calc(100vw - 28px); left: 14px; max-height: 60vh; }
+  #lp { max-height: 40vh; }
+  #rp-wrap { width: calc(100vw - 28px); right: 14px; top: auto; bottom: 60px; }
+  #rp { max-height: 35vh; }
+  #cp { max-height: 35vh; }
+  #tnav { top: 8px; }
+}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#mw">Skip to map</a>
+
+<!-- ══════════════════════════════════
+     LOADING SCREEN
+══════════════════════════════════════ -->
+<div id="ls" role="status" aria-label="Loading dashboard">
+  <img id="ls-logo" src="external-assets/name-logo_1.png" alt="WTA Labs"
+       onerror="this.style.display='none';document.getElementById('ls-logo-fb').style.display='block'">
+  <div id="ls-logo-fb">WTA <span>Labs</span></div>
+  <div id="ls-track" role="progressbar" aria-valuenow="0" aria-valuemax="100">
+    <div id="ls-bar"></div>
+  </div>
+  <div id="ls-lbl" aria-live="polite">Initializing map…</div>
+</div>
+
+<!-- ══════════════════════════════════
+     HOME SCREEN
+══════════════════════════════════════ -->
+<div id="home" aria-label="Project introduction" hidden>
+  <div id="home-left">
+    <img id="home-logo-top" src="external-assets/name-logo_1.png" alt="WTA Labs"
+         onerror="this.style.display='none'">
+    <p id="home-by">Study by WTA Labs</p>
+    <h1 id="home-title">Schools<br>Catchment<br><span>Dashboard</span></h1>
+    <p id="home-sub">Interactive spatial analysis of school service areas across
+      Metro Manila's National Capital Region — Philippines.</p>
+    <button id="home-btn" aria-label="Enter the map dashboard">
+      <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Enter Map
+    </button>
+  </div>
+  <div id="home-right">
+    <div id="home-right-fade"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     APP SHELL
+══════════════════════════════════════ -->
+<div id="app">
+
+  <!-- LEFT PANEL — Analysis layers only -->
+  <div id="lp-wrap">
+
+  <!-- About floating panel -->
+  <aside id="about-panel" aria-label="About this map">
+    <section class="lp-sec" aria-labelledby="lp-about">
+      <p class="lp-hd" id="lp-about">About</p>
+      <p class="ctx">Spatial analysis of school catchment areas across the National Capital
+        Region. Data from DepED, OSM, and PSA. Click a feature to view its attributes.</p>
+    </section>
+  </aside>
+
+  <!-- Layers control panel -->
+  <aside id="lp" aria-label="Layer controls">
+
+    <section class="lp-sec" data-show-in="schools" aria-labelledby="lp-analysis">
+      <p class="lp-hd" id="lp-analysis">Schools in Metro Manila</p>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:rgba(222,207,163,0.8);border-color:rgba(148,118,31,0.6)"></span>
+          <span class="lyr-name">15-minute Walking Catchment by School</span>
+        </div>
+        <label class="tog" aria-label="Toggle 15-minute Walking Catchment by School layer">
+          <input type="checkbox" id="lp-sawalk">
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:rgba(255,238,130,1.0);border-color:rgba(119,101,56,1.0)"></span>
+          <span class="lyr-name">Schools</span>
+        </div>
+        <label class="tog" aria-label="Toggle Schools layer">
+          <input type="checkbox" id="lp-schools102b" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="lp-sec" data-show-in="schools" aria-labelledby="lp-levels">
+      <p class="lp-hd" id="lp-levels">View by School Level</p>
+
+      <!-- "All" resets to uniform symbology -->
+      <div class="lyr" style="margin-bottom:4px;padding-bottom:8px;border-bottom:1px solid rgba(0,0,0,0.1)">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:rgba(255,238,130,1.0);border-color:rgba(119,101,56,0.6)"></span>
+          <span class="lyr-name" style="font-weight:700">All Schools</span>
+        </div>
+        <label class="tog" aria-label="Show all schools with same symbology">
+          <input type="checkbox" id="lv-all" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:#F28C28;border-color:#d4771a"></span>
+          <span class="lyr-name">Elementary School (ES)</span>
+        </div>
+        <label class="tog" aria-label="Toggle Elementary School (ES)">
+          <input type="checkbox" id="lv-es" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:#C0392B;border-color:#a03020"></span>
+          <span class="lyr-name">Junior High School (JHS)</span>
+        </div>
+        <label class="tog" aria-label="Toggle Junior High School (JHS)">
+          <input type="checkbox" id="lv-jhs" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:#1F618D;border-color:#174f72"></span>
+          <span class="lyr-name">Senior High School (SHS)</span>
+        </div>
+        <label class="tog" aria-label="Toggle Senior High School (SHS)">
+          <input type="checkbox" id="lv-shs" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:#148F77;border-color:#107360"></span>
+          <span class="lyr-name">JHS &amp; SHS (Combined)</span>
+        </div>
+        <label class="tog" aria-label="Toggle schools with JHS &amp; SHS (Combined)">
+          <input type="checkbox" id="lv-jhs-shs" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:#7B1FA2;border-color:#5e1880"></span>
+          <span class="lyr-name">ES, JHS &amp; SHS (Integrated)</span>
+        </div>
+        <label class="tog" aria-label="Toggle schools with ES, JHS &amp; SHS (Integrated)">
+          <input type="checkbox" id="lv-multi" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:rgba(180,180,180,0.7);border-color:rgba(100,100,100,0.4)"></span>
+          <span class="lyr-name">Not Classified</span>
+        </div>
+        <label class="tog" aria-label="Toggle unclassified schools">
+          <input type="checkbox" id="lv-none" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+    </section>
+
+    <!-- WALKING CATCHMENTS section — visible only in walkcat view -->
+    <section class="lp-sec" data-show-in="walkcat" aria-labelledby="lp-bgy">
+      <p class="lp-hd" id="lp-bgy">Barangays within School Walking Catchment</p>
+      <!-- Default view: solid uniform tan fill + barangay borders -->
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:rgba(222,207,163,0.9);border-color:rgba(148,118,31,0.5)"></span>
+          <span class="lyr-name">15-minute Walking Catchment by Barangay</span>
+        </div>
+        <label class="tog" aria-label="Show 15-minute Walking Catchment by Barangay">
+          <input type="checkbox" id="bgy-view-default" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <!-- Density view: 5-class graduated colour + barangay borders -->
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:linear-gradient(to right,rgb(222,207,163),rgb(130,106,37),rgb(76,60,14));border-color:rgba(0,0,0,0.15)"></span>
+          <span class="lyr-name">15-min. Catchment by Pop. Density</span>
+        </div>
+        <label class="tog" aria-label="Show barangay fill by population density">
+          <input type="checkbox" id="bgy-view-density">
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <!-- Density legend — visible only when density view is active -->
+      <div id="density-legend" class="density-legend" style="display:none">
+        <p class="lp-hd" style="margin-top:8px;margin-bottom:4px">Pop. Density (persons/ha)</p>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(222,207,163)"></span>0 – 1.9</div>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(176,156,100)"></span>1.9 – 3.2</div>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(130,106,37)"></span>3.2 – 5.1</div>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(101,80,19)"></span>5.1 – 8.5</div>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(76,60,14)"></span>8.5+</div>
+      </div>
+    </section>
+
+    <!-- UNDERSERVED AREAS section — visible only in underserved view -->
+    <section class="lp-sec" data-show-in="underserved" aria-labelledby="lp-underserved">
+      <p class="lp-hd" id="lp-underserved">Underserved Areas — NCR</p>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:rgba(205,205,205,0.85);border-color:rgba(100,100,100,0.4)"></span>
+          <span class="lyr-name">15-min Walking Catchment</span>
+        </div>
+        <label class="tog" aria-label="Toggle 15-min Walking Catchment layer">
+          <input type="checkbox" id="lp-popwalkzone" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:linear-gradient(to right,rgb(255,146,146),rgb(173,73,73),rgb(90,0,0));border-color:rgba(0,0,0,0.15)"></span>
+          <span class="lyr-name">Underserved Areas (by Barangay)</span>
+        </div>
+        <label class="tog" aria-label="Toggle Underserved Areas layer">
+          <input type="checkbox" id="lp-popundersrv" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <!-- Three-class legend for underserved layer -->
+      <div style="padding:4px 0 0 0">
+        <p class="lp-hd" style="margin-top:6px;margin-bottom:4px">ES Student Density (per ha)</p>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(255,146,146)"></span>0 – 1.8</div>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(173,73,73)"></span>1.8 – 3.4</div>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(90,0,0)"></span>3.4+</div>
+      </div>
+
+      <div class="lyr" style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,0.08)">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:linear-gradient(to right,rgb(222,207,163),rgb(130,106,37),rgb(76,60,14));border-color:rgba(0,0,0,0.15)"></span>
+          <span class="lyr-name">15-min. Catchment by Pop. Density</span>
+        </div>
+        <label class="tog" aria-label="Toggle population density layer">
+          <input type="checkbox" id="lp-bgyden-unsrv"><!-- off by default -->
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <!-- Five-class legend for pop density layer — matches walkcat view -->
+      <div id="unsrv-den-legend" style="display:none;padding:4px 0 0 0">
+        <p class="lp-hd" style="margin-top:6px;margin-bottom:4px">Pop. Density (persons/ha)</p>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(222,207,163)"></span>0 – 1.9</div>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(176,156,100)"></span>1.9 – 3.2</div>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(130,106,37)"></span>3.2 – 5.1</div>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(101,80,19)"></span>5.1 – 8.5</div>
+        <div class="den-row"><span class="den-swatch" style="background:rgb(76,60,14)"></span>8.5+</div>
+      </div>
+    </section>
+
+    <!-- Schools & Catchment — shared section for Walking Catchments + Underserved views -->
+    <section class="lp-sec" data-show-in="walkcat,underserved" aria-labelledby="lp-schools-overlay">
+      <p class="lp-hd" id="lp-schools-overlay">Schools &amp; Catchment</p>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:rgba(222,207,163,0.8);border-color:rgba(148,118,31,0.6)"></span>
+          <span class="lyr-name">15-minute Walking Catchment by School</span>
+        </div>
+        <label class="tog" aria-label="Toggle 15-minute Walking Catchment by School layer">
+          <input type="checkbox" id="lp-sawalk-wc">
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+
+      <div class="lyr">
+        <div class="lyr-info">
+          <span class="leg-swatch" style="background:#9f9f9f;border-color:#7a7a7a"></span>
+          <span class="lyr-name">Schools</span>
+        </div>
+        <label class="tog" aria-label="Toggle schools appearance layer">
+          <input type="checkbox" id="lp-schools-walkcat" checked>
+          <span class="tog-track"><span class="tog-thumb"></span></span>
+        </label>
+      </div>
+    </section>
+
+    <!-- Reset toggles — restores default layer/level settings -->
+    <section class="lp-sec" style="padding:10px 15px;">
+      <button id="reset-toggles-btn" title="Reset to default settings">Reset</button>
+    </section>
+
+  </aside>
+
+  </div><!-- /#lp-wrap -->
+
+  <!-- MAP -->
+  <main id="mw" role="main" tabindex="-1" aria-label="Interactive map">
+
+    <!-- Floating top nav -->
+    <nav id="tnav" aria-label="Map view controls">
+      <!-- View selector pill -->
+      <div class="pill" role="group" aria-label="Map view">
+        <span class="pill-lbl">View</span>
+        <button class="vbtn on" data-view="schools"    aria-pressed="true">Schools<span class="v-badge" aria-hidden="true">9</span></button>
+        <button class="vbtn"    data-view="walkcat"     aria-pressed="false">Walking Catchments</button>
+        <button class="vbtn"    data-view="underserved" aria-pressed="false">Underserved Areas</button>
+      </div>
+
+      <!-- Feature select pill -->
+      <div class="pill">
+        <span class="pill-lbl">City</span>
+        <select class="fsel" id="fsel" aria-label="Select a city or municipality">
+          <option value="">— All —</option>
+        </select>
+      </div>
+    </nav>
+
+    <!-- Floating map title -->
+    <div id="map-title" aria-label="Map title">
+      <div class="mt-title">Schools in Metro Manila</div>
+      <div class="mt-subtitle">Mapping Schools and Catchments</div>
+      <div class="mt-sub">NCR · Metro Manila · Philippines</div>
+    </div>
+
+    <!-- MapLibre map canvas -->
+    <div id="map" data-basemap="positron"></div>
+
+    <!-- Bottom-right HUD: scale bar · zoom · coordinates -->
+    <div id="br-hud" aria-label="Map status">
+      <span id="zoom-disp" aria-label="Map zoom">Z –</span>
+      <span id="scalebar-wrap" aria-label="Scale bar">
+        <span id="scalebar-line"></span>
+        <span id="scalebar-lbl">–</span>
+      </span>
+      <span id="coords" aria-live="off" aria-label="Cursor coordinates">–°N, –°E</span>
+    </div>
+
+    <!-- Corner logo — lower left -->
+    <div id="corner-logo" aria-label="WTA Labs website">
+      <a href="https://wtalabs.ph" target="_blank" rel="noopener noreferrer" aria-label="Visit WTA Labs website">
+        <img src="external-assets/name-logo_1.png" alt="WTA Labs">
+      </a>
+    </div>
+
+    <!-- Base layer panel — horizontal pill below top nav -->
+    <div id="blp" aria-label="Base layer controls">
+
+      <!-- Basemap group -->
+      <span class="blp-sect-lbl">Basemap</span>
+      <div class="bm-switcher" role="group" aria-label="Select basemap">
+        <button class="bm-btn on" data-bm="positron" title="CartoCDN Positron">Default</button>
+        <button class="bm-btn"    data-bm="osm"       title="OpenStreetMap">OSM</button>
+        <button class="bm-btn"    data-bm="satellite" title="Google Satellite Hybrid">Satellite</button>
+      </div>
+
+      <span class="blp-sep-v"></span>
+
+      <!-- Base layers group -->
+      <span class="blp-sect-lbl">Layers</span>
+      <label class="blp-chk">
+        <input type="checkbox" id="lp-water" checked>
+        <span class="leg-swatch" style="background:#9BC1DA;border-color:#7aaec8"></span>
+        Water
+      </label>
+      <label class="blp-chk">
+        <input type="checkbox" id="lp-cities" checked>
+        <img src="styles/legend/CitiesMM_4.png" alt="" style="width:12px;height:12px;object-fit:contain;flex-shrink:0">
+        Cities
+      </label>
+      <label class="blp-chk">
+        <input type="checkbox" id="lp-mb">
+        <span class="leg-swatch" style="background:linear-gradient(135deg,#FFCF00 0%,#42A5C8 40%,#9B7FC8 70%,#5C8B5C 100%);border-color:rgba(131,132,133,0.6)"></span>
+        Barangays (NCR)
+      </label>
+
+    </div>
+
+    <!-- Data attribution — bottom left -->
+    <div id="data-src" aria-label="Data attribution">DepED · OpenStreetMap · PSA</div>
+
+    <!-- Barangay/School search bar — centre bottom, visible in Walking Catchments + Underserved views -->
+    <div id="bgy-search-bar" role="search" aria-label="Search barangay or school">
+      <select id="bgy-search-mode" class="search-mode-sel" aria-label="Search mode">
+        <option value="barangay">Barangay</option>
+        <option value="school">School</option>
+      </select>
+      <div id="bgy-search-icon" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M10 10l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <input id="bgy-search-input" type="text" placeholder="Search barangay…"
+             autocomplete="off" aria-autocomplete="list" aria-controls="bgy-autocomplete">
+      <button id="bgy-clear-btn" aria-label="Clear search" title="Clear">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <span class="search-bar-sep" aria-hidden="true"></span>
+      <label class="blp-chk" id="bgy-ncr-toggle-wrap"
+             title="Show matching Barangay (NCR) outline" style="white-space:nowrap;padding:0 4px;gap:4px">
+        <input type="checkbox" id="bgy-ncr-toggle">
+        Bgy (NCR)
+      </label>
+      <div id="bgy-autocomplete" role="listbox" aria-label="Barangay suggestions"></div>
+    </div>
+
+    <!-- Barangay deselect — separate pill to the right of the search bar -->
+    <button id="bgy-deselect-btn" class="deselect-features-btn"
+            title="Deselect all selected / clicked features" aria-label="Deselect features">
+      Deselect
+    </button>
+
+    <!-- School deselect — separate pill to the right of the school search bar -->
+    <button id="school-deselect-btn" class="deselect-features-btn"
+            title="Deselect selected school" aria-label="Deselect school">
+      Deselect
+    </button>
+
+    <!-- School search bar — centre bottom, visible in Schools view -->
+    <div id="school-search-bar" role="search" aria-label="Search school">
+      <div id="school-search-icon" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M10 10l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <input id="school-search-input" type="text" placeholder="Search school name…"
+             autocomplete="off" aria-autocomplete="list" aria-controls="school-autocomplete">
+      <button id="school-clear-btn" aria-label="Clear search" title="Clear">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <span class="search-bar-sep" aria-hidden="true"></span>
+      <button class="deselect-features-btn" title="Deselect all selected / clicked features" aria-label="Deselect features">Deselect</button>
+      <div id="school-autocomplete" role="listbox" aria-label="School suggestions"></div>
+    </div>
+
+  </main>
+
+  <!-- Right column — stacked flex: Properties (upper) + Catchment (lower) -->
+  <div id="rp-wrap">
+
+    <!-- Properties panel — upper half -->
+    <aside id="rp" aria-label="Feature properties">
+      <div class="rp-hdr">
+        <span class="rp-title">Properties</span>
+        <button id="rp-deselect-btn" class="deselect-features-btn rp-deselect"
+                title="Deselect / clear panel" aria-label="Deselect">Deselect</button>
+      </div>
+      <div id="rp-empty">
+        <svg width="38" height="38" viewBox="0 0 38 38" fill="none"
+             xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <circle cx="19" cy="19" r="17" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M19 12v7l4 4" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p>Click a feature on the map to view its attributes.</p>
+      </div>
+      <div id="rp-body" aria-live="polite"></div>
+    </aside>
+
+    <!-- 15-min Catchment panel — lower half, slides in beneath Properties -->
+    <aside id="cp" aria-label="15-min catchment properties" aria-hidden="true">
+      <div class="rp-hdr">
+        <span class="rp-title">15-min Catchment</span>
+        <span class="rp-badge" style="background:rgba(222,207,163,0.85);color:#5a4000;margin-right:2px">SA-Walk</span>
+      </div>
+      <div id="cp-body"></div>
+    </aside>
+
+  </div><!-- /#rp-wrap -->
+
+  <!-- Hover tooltip — floats near cursor for interactive layers -->
+  <div id="hover-tip" role="tooltip" aria-hidden="true"></div>
+
+  <!-- School name HTML labels — Helvetica overlay, opacity-ramped by zoom -->
+  <div id="school-labels-container" aria-hidden="true"></div>
+
+  <!-- 15-min catchment label — HTML overlay, positioned via map.project() -->
+  <div id="catch-label" aria-hidden="true"></div>
+
+  <!-- Persistent selected-school name label — HTML overlay, repositioned on map move -->
+  <div id="school-sel-label" aria-hidden="true"></div>
+
+</div><!-- /#app -->
+
+
+<!-- ══════════════════════════════════
+     DASHBOARD LOGIC
+══════════════════════════════════════ -->
+<script>
+(function () {
+  'use strict';
+
+  /* ── Geography ───────────────────────────────────── */
+  const HOME_CENTER = [121.0, 12.5];
+  const HOME_ZOOM   = 5;
+  const NCR_CENTER  = [121.02, 14.57];
+  const NCR_ZOOM    = 11;
+  const NCR_BOUNDS  = [[120.86, 14.30], [121.18, 14.80]];
+
+  /* ── Layer catalogue ─────────────────────────────── */
+  /* Each entry maps sidebar/nav checkbox IDs → MapLibre layer IDs.
+     MapLibre layer IDs are defined in addLocalLayers(). */
+  const LAYER_TOGGLES = [
+    { ids: ['lp-water'],        layers: ['water-fill'] },
+    { ids: ['lp-cities'],       layers: ['cities-fill', 'cities-line'] },
+    { ids: ['lp-sawalk', 'lp-sawalk-wc'], layers: ['sawalk-fill', 'sawalk-line'] },
+    { ids: ['lp-schools102b'],  layers: ['schools102b-fill', 'schools102b-line'] },
+    { ids: ['lp-popwalkzone'],    layers: ['popwalkzone-fill', 'popwalkzone-line'] },
+    { ids: ['lp-popundersrv'],   layers: ['popundersrv-fill', 'popundersrv-line'] },
+    { ids: ['lp-bgyden-unsrv'],    layers: ['bgy-den-undersrv-fill', 'bgy-den-undersrv-line'] },
+    { ids: ['lp-mb'],              layers: ['mb-fill', 'mb-line'] },
+    { ids: ['lp-schools-walkcat'], layers: ['schools-walkcat-fill', 'schools-walkcat-line', 'schools-walkcat-label'] },
+  ];
+
+  /* ── School level colour system ──────────────────── */
+  /* ── School level colour system (IR-based LevelClass field) ── */
+  const SCHOOL_COLORS = {
+    ES:         '#F28C28',   /* Elementary only */
+    JHS:        '#C0392B',   /* Junior High only */
+    SHS:        '#1F618D',   /* Senior High only */
+    JHS_SHS:    '#148F77',   /* Both JHS and SHS */
+    ES_JHS_SHS: '#7B1FA2',   /* ES, JHS, SHS (full integrated) */
+    NONE:       'rgba(180,180,180,0.6)'
+  };
+
+  /* Helper kept for legacy compatibility */
+  function hasVal(field) {
+    return ['all', ['has', field], ['!=', ['coalesce', ['get', field], ''], '']];
+  }
+
+  /* LevelClass is pre-computed in both SAWalk and schools102b by PowerShell.
+     Values: 'ES' | 'JHS' | 'SHS' | 'JHS_SHS' | 'ES_JHS_SHS' | 'NONE' */
+  const SCHOOL_COLOR_EXPR = [
+    'match', ['get', 'LevelClass'],
+    'ES',         SCHOOL_COLORS.ES,
+    'JHS',        SCHOOL_COLORS.JHS,
+    'SHS',        SCHOOL_COLORS.SHS,
+    'JHS_SHS',    SCHOOL_COLORS.JHS_SHS,
+    'ES_JHS_SHS', SCHOOL_COLORS.ES_JHS_SHS,
+    SCHOOL_COLORS.NONE
+  ];
+
+  /* ── Barangay population-density colour ramp ─────
+     Source: Baramgays_inSAWalk_1 field 'PopDenES ' (trailing space preserved) */
+  const BGY_DENSITY_COLOR_EXPR = [
+    'step', ['get', 'PopDenES '],
+    'rgba(222,207,163,1.0)',      /* default / < 1.872 */
+    1.872, 'rgba(176,156,100,1.0)',
+    3.150, 'rgba(130,106,37,1.0)',
+    5.060, 'rgba(101,80,19,1.0)',
+    8.546, 'rgba(76,60,14,1.0)'
+  ];
+
+  /* ── Basemap catalogue ───────────────────────────── */
+  const BASEMAPS = {
+    positron: { style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json' },
+    osm: {
+      style: {
+        version: 8,
+        glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+        sources: { 'osm-tiles': {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }},
+        layers: [{ id: 'osm-bg', type: 'raster', source: 'osm-tiles' }]
+      }
+    },
+    satellite: {
+      style: {
+        version: 8,
+        glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+        sources: { 'google-hybrid': {
+          type: 'raster',
+          tiles: ['https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'],
+          tileSize: 256,
+          attribution: '© Google'
+        }},
+        layers: [{ id: 'satellite-bg', type: 'raster', source: 'google-hybrid' }]
+      }
+    }
+  };
+
+  let currentBasemapId = 'positron';
+  let mapInitDone      = false;
+
+  /* ── Filter / level / catchment state ───────────── */
+  let levelStates            = { ES: true, JHS: true, SHS: true, JHS_SHS: true, ES_JHS_SHS: true, NONE: true };
+  let selectedCityName       = null;
+  let selectedDropdownCityId = null;
+  let lockedCatchmentFid     = null;
+  let showAllLevels          = true;   /* true = uniform yellow; false = colour-by-level */
+  let currentSawalkFeature   = null;
+  /* bgyMode is now derived from checkbox state — no separate variable needed */
+
+  /* ── MapLibre init ───────────────────────────────── */
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: BASEMAPS.positron.style,
+    center: HOME_CENTER,
+    zoom:   HOME_ZOOM,
+    attributionControl: true
+  });
+
+  /* Navigation control */
+  /* Zoom control removed — logo replaces it in bottom-left */
+
+  /* ── Loading screen ──────────────────────────────── */
+  const lsEl  = document.getElementById('ls');
+  const lsBar = document.getElementById('ls-bar');
+  const lsLbl = document.getElementById('ls-lbl');
+
+  /* style.load — first load only; basemap switches use map.once inside switchBasemap() */
+  map.on('style.load', () => {
+    if (mapInitDone) return;   /* basemap switch — handled by map.once in switchBasemap() */
+    mapInitDone = true;
+    lsLbl.textContent = 'Adding layers…';
+    addLocalLayers();
+    populateCityDropdown();
+    wireToggles();
+    wireViewButtons();
+    wireBasemapButtons();
+    wireLevelToggles();
+    wireMapInteractions();
+    wireHoverTooltip();
+    wireBgyMode();
+    wireBgySearch();
+    wireSchoolSearch();
+    wireSchoolLabels();
+    initLpCollapse();
+    showLpSectionsForView('schools');  /* default view on load */
+    /* School search bar appears ONLY after Enter Map — not on the home screen */
+
+    map.once('idle', () => {
+      lsBar.style.animation = 'none';
+      lsBar.style.width = '100%';
+      document.getElementById('ls-track').setAttribute('aria-valuenow', '100');
+      lsLbl.textContent = 'Ready';
+      setTimeout(() => {
+        lsEl.classList.add('out');
+        setTimeout(() => { lsEl.remove(); showHome(); }, 460);
+      }, 350);
+    });
+  });
+
+  /* ── Add local GeoJSON sources & layers ──────────── */
+  function addLocalLayers() {
+
+    /* Safety: remove any stale custom layers/sources before (re-)adding.
+       After map.setStyle({diff:false}) they should already be gone, but
+       this guard makes the function idempotent and prevents "source exists" errors. */
+    ['bgy-hl-line','bgy-hl-fill','bgy-borders-line','barangays-ncr-fill',
+     'bgy-den-undersrv-line','bgy-den-undersrv-fill',
+     'bgy-catch-density-fill','bgy-catch-line','bgy-catch-fill','bgy-catch-label',
+     'bgy-ncr-hl-line',
+     'school-hl-line','school-hl-fill',
+     'schools-walkcat-label','schools-walkcat-line','schools-walkcat-fill',
+     'mb-line','mb-fill',
+     'schools102b-line','schools102b-fill',
+     'sawalk-hl-line','sawalk-hl-fill',
+     'sawalk-line','sawalk-fill',
+     'popundersrv-line','popundersrv-fill',
+     'popwalkzone-line','popwalkzone-fill',
+     'ncr-line','ncr-mask-fill',
+     'basemap-wash',
+     'water-fill','cities-line','cities-fill'
+    ].forEach(lid => { try { if (map.getLayer(lid)) map.removeLayer(lid); } catch (_) {} });
+    ['bgy-highlight','bgy-borders','bgycatch',
+     'school-highlight',
+     'schools102b','sawalk-highlight','sawalk','ncr-mask','ncr','water','cities',
+     'popwalkzone','popundersrv','basemap-wash-src','mb','bgy-ncr-hl'
+    ].forEach(sid => { try { if (map.getSource(sid)) map.removeSource(sid); } catch (_) {} });
+
+    /* ── Basemap white-wash — sits between Positron tiles and all data layers.
+       Replaces the old CSS filter: saturate(0.12) so data-layer colours are unaffected. */
+    map.addSource('basemap-wash-src', {
+      type: 'geojson',
+      data: { type: 'Feature', geometry: {
+        type: 'Polygon',
+        coordinates: [[[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]]]
+      }}
+    });
+    map.addLayer({
+      id: 'basemap-wash', type: 'fill', source: 'basemap-wash-src',
+      paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 }
+    });
+
+    /* Build inverse-NCR mask GeoJSON (world polygon with NCR as hole) */
+    function makeNCRMask() {
+      const world = [[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]];
+      const holes = [];
+      json_NCR_1.features.forEach(f => {
+        const g = f.geometry;
+        if (g.type === 'Polygon') { holes.push(g.coordinates[0]); }
+        else if (g.type === 'MultiPolygon') { g.coordinates.forEach(p => holes.push(p[0])); }
+      });
+      return { type: 'FeatureCollection', features: [{
+        type: 'Feature', geometry: { type: 'Polygon', coordinates: [world, ...holes] }
+      }]};
+    }
+
+    /* ── Cities / Municipalities (fill + outline, interactive) ── */
+    map.addSource('cities', { type: 'geojson', data: json_CitiesMM_4, generateId: true });
+    map.addLayer({
+      id: 'cities-fill', type: 'fill', source: 'cities',
+      paint: {
+        /* No fill by default or on hover — only highlight when a city is selected */
+        'fill-color': [
+          'case',
+          ['boolean', ['feature-state', 'selected'], false], 'rgba(255,207,0,0.38)',
+          'rgba(0,0,0,0)'
+        ],
+        'fill-opacity': 1
+      }
+    });
+    map.addLayer({
+      id: 'cities-line', type: 'line', source: 'cities',
+      paint: {
+        'line-color': [
+          'case',
+          ['boolean', ['feature-state', 'selected'], false], '#FFCF00',
+          '#9E9E9E'
+        ],
+        'line-width': [
+          'case',
+          ['boolean', ['feature-state', 'selected'], false], 4, 0.8
+        ]
+      }
+    });
+
+    /* ── Water (above Cities) ── */
+    map.addSource('water', { type: 'geojson', data: json_Water_0, generateId: true });
+    map.addLayer({
+      id: 'water-fill', type: 'fill', source: 'water',
+      paint: {
+        'fill-color': '#9BC1DA',
+        'fill-opacity': ['case', ['boolean', ['feature-state','hover'], false], 0.55, 0.40]
+      }
+    });
+
+    /* ── NCR inverse mask — white-wash everything outside NCR boundary ── */
+    map.addSource('ncr-mask', { type: 'geojson', data: makeNCRMask() });
+    map.addLayer({
+      id: 'ncr-mask-fill', type: 'fill', source: 'ncr-mask',
+      paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.20 }
+    });
+
+    /* ── NCR boundary — permanent, on top of mask ── */
+    map.addSource('ncr', { type: 'geojson', data: json_NCR_1, generateId: true });
+    map.addLayer({
+      id: 'ncr-line', type: 'line', source: 'ncr',
+      paint: { 'line-color': '#888888', 'line-width': 1.2 }
+    });
+
+    /* ── 15-min Walking Catchment — hidden by default ──
+         Style preserved from QGIS: tan fill rgba(222,207,163),
+         brownish stroke rgba(148,118,31) w=0.228 */
+    map.addSource('sawalk', { type: 'geojson', data: json_SAWalk_0, generateId: true });
+    map.addLayer({
+      id: 'sawalk-fill', type: 'fill', source: 'sawalk',
+      layout: { visibility: 'none' },
+      paint: {
+        'fill-color': 'rgba(222,207,163,1.0)',
+        'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.55, 0.25]
+      }
+    });
+    map.addLayer({
+      id: 'sawalk-line', type: 'line', source: 'sawalk',
+      layout: { visibility: 'none' },
+      paint: { 'line-color': 'rgba(148,118,31,0.6)', 'line-width': 0.228 }
+    });
+
+    /* ── Catchment highlight — added BEFORE schools so school polys render on top ── */
+    map.addSource('sawalk-highlight', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'sawalk-hl-fill', type: 'fill', source: 'sawalk-highlight',
+      paint: { 'fill-color': 'rgba(222,207,163,1.0)', 'fill-opacity': 0.78 }
+    });
+    map.addLayer({
+      id: 'sawalk-hl-line', type: 'line', source: 'sawalk-highlight',
+      paint: { 'line-color': 'rgba(148,118,31,1.0)', 'line-width': 1.8,
+               'line-dasharray': [4, 2] }
+    });
+
+    /* ── Schools (FuzzyAll 102B) — renders ABOVE catchment highlight ──
+         Color-coded by school level; stroke preserved from QGIS w=0.988 */
+    map.addSource('schools102b', { type: 'geojson', data: json_01SchoolsFuzzyAll102Bcopy_1, generateId: true });
+    map.addLayer({
+      id: 'schools102b-fill', type: 'fill', source: 'schools102b',
+      paint: {
+        'fill-color': SCHOOL_COLOR_EXPR,
+        'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 1.0, 0.85]
+      }
+    });
+    map.addLayer({
+      id: 'schools102b-line', type: 'line', source: 'schools102b',
+      paint: { 'line-color': '#F5F5F0', 'line-width': 0.4 }
+    });
+
+    /* schools-walkcat layers moved to top of stack — added after bgycity below */
+    /* School name labels (Schools view) are rendered as HTML overlays — see wireSchoolLabels() */
+
+    /* ── Barangays within School Walking Catchment ──────────────────────── */
+
+    /* Catchment barangay polygons — default solid fill */
+    map.addSource('bgycatch', { type: 'geojson', data: json_Baramgays_inSAWalk_1, generateId: true });
+    map.addLayer({
+      id: 'bgy-catch-fill', type: 'fill', source: 'bgycatch',
+      layout: { visibility: 'none' },
+      paint: {
+        /* Yellow (#FFCF00) on hover or click-selected; tan otherwise */
+        'fill-color': ['case',
+          ['any',
+            ['boolean', ['feature-state', 'hover'],    false],
+            ['boolean', ['feature-state', 'selected'], false]
+          ],
+          '#FFCF00',
+          'rgba(222,207,163,1.0)'
+        ],
+        'fill-opacity': ['case',
+          ['any',
+            ['boolean', ['feature-state', 'hover'],    false],
+            ['boolean', ['feature-state', 'selected'], false]
+          ],
+          0.88,   /* vivid WTA yellow — high enough to read as saturated #FFCF00 */
+          0.75
+        ]
+      }
+    });
+
+    /* Catchment barangay polygons — population density graduated fill */
+    map.addLayer({
+      id: 'bgy-catch-density-fill', type: 'fill', source: 'bgycatch',
+      layout: { visibility: 'none' },
+      paint: {
+        'fill-color': BGY_DENSITY_COLOR_EXPR,
+        /* Brighten on hover or click-selected so the border highlight stands out */
+        'fill-opacity': ['case',
+          ['any',
+            ['boolean', ['feature-state', 'hover'],    false],
+            ['boolean', ['feature-state', 'selected'], false]
+          ],
+          1.0,
+          0.82
+        ]
+      }
+    });
+
+    /* Catchment barangay borders — added LAST so the line renders above both fill layers.
+       Black on hover/selected; dark-brown at rest. Works for both Default and Density views. */
+    map.addLayer({
+      id: 'bgy-catch-line', type: 'line', source: 'bgycatch',
+      layout: { visibility: 'none' },
+      paint: {
+        'line-color': ['case',
+          ['any',
+            ['boolean', ['feature-state', 'hover'],    false],
+            ['boolean', ['feature-state', 'selected'], false]
+          ],
+          '#111111',              /* black on hover/selected */
+          'rgba(148,118,31,0.55)' /* dark-brown at rest */
+        ],
+        'line-width': ['case',
+          ['any',
+            ['boolean', ['feature-state', 'hover'],    false],
+            ['boolean', ['feature-state', 'selected'], false]
+          ],
+          0.5,
+          0.28
+        ]
+      }
+    });
+
+    /* Population-density fill — duplicate for Underserved view; same source/expr as walkcat density.
+       Hidden by default; shares feature-state IDs with bgycatch (same generateId source). */
+    map.addLayer({
+      id: 'bgy-den-undersrv-fill', type: 'fill', source: 'bgycatch',
+      layout: { visibility: 'none' },
+      paint: {
+        'fill-color': BGY_DENSITY_COLOR_EXPR,
+        'fill-opacity': ['case',
+          ['any', ['boolean', ['feature-state', 'hover'], false],
+                  ['boolean', ['feature-state', 'selected'], false]],
+          1.0, 0.82
+        ]
+      }
+    });
+    map.addLayer({
+      id: 'bgy-den-undersrv-line', type: 'line', source: 'bgycatch',
+      layout: { visibility: 'none' },
+      paint: {
+        'line-color': ['case',
+          ['any', ['boolean', ['feature-state', 'hover'], false],
+                  ['boolean', ['feature-state', 'selected'], false]],
+          '#111111', 'rgba(148,118,31,0.55)'
+        ],
+        'line-width': ['case',
+          ['any', ['boolean', ['feature-state', 'hover'], false],
+                  ['boolean', ['feature-state', 'selected'], false]],
+          2.5, 0.7
+        ]
+      }
+    });
+
+    /* Barangay-catchment name labels — symbol layer, appears at zoom ≥ 13.
+       Uses Open Sans Regular (available MapLibre SDF glyph font). Thin, legible. */
+    map.addLayer({
+      id: 'bgy-catch-label', type: 'symbol', source: 'bgycatch',
+      minzoom: 13,
+      layout: {
+        visibility: 'none',
+        'text-field': ['get', 'Bgy_Name'],
+        'text-font': ['literal', ['Noto Sans Regular', 'Arial Unicode MS Regular']],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 13, 8, 15, 11],
+        'text-max-width': 7,
+        'text-anchor': 'center',
+        'text-padding': 2,
+        'text-allow-overlap': false
+      },
+      paint: {
+        'text-color': '#3d2e0a',
+        'text-halo-color': 'rgba(255,255,255,0.82)',
+        'text-halo-width': 1.1,
+        'text-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.6, 14, 1.0]
+      }
+    });
+
+    /* All NCR barangay borders — BarangaysNCR_0.js, WGS84 CRS84, 1706 features, 9.5 MB.
+       Wrapped in try-catch so a failure doesn't abort the rest of addLocalLayers(). */
+    if (typeof json_BarangaysNCR_0 === 'undefined') {
+      console.error('[SchoolsCatch] json_BarangaysNCR_0 is undefined — check script tag loaded correctly');
+    }
+    try {
+      map.addSource('bgy-borders', {
+        type: 'geojson',
+        data: json_BarangaysNCR_0,
+        generateId: true       /* enables feature-state hover */
+      });
+      /* Fill: near-transparent at rest (0.01 ensures reliable pointer-events),
+         tan highlight on hover. */
+      map.addLayer({
+        id: 'barangays-ncr-fill', type: 'fill', source: 'bgy-borders',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': 'rgba(160,130,60,1.0)',
+          'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.22, 0.01]
+        }
+      });
+      /* Line: clearly visible dark-brown border */
+      map.addLayer({
+        id: 'bgy-borders-line', type: 'line', source: 'bgy-borders',
+        layout: { visibility: 'none' },
+        paint: { 'line-color': 'rgba(80,60,15,0.65)', 'line-width': 0.9 }
+      });
+    } catch (e) {
+      console.error('[SchoolsCatch] bgy-borders source/layers failed:', e.message);
+    }
+
+    /* Barangay search highlight */
+    map.addSource('bgy-highlight', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'bgy-hl-fill', type: 'fill', source: 'bgy-highlight',
+      paint: { 'fill-color': 'rgba(255,207,0,0.35)', 'fill-opacity': 1.0 }
+    });
+    map.addLayer({
+      id: 'bgy-hl-line', type: 'line', source: 'bgy-highlight',
+      paint: { 'line-color': '#FFCF00', 'line-width': 2.5 }
+    });
+
+    /* ── Underserved Areas — PopBgyClipped_WalkZ1_0 (15-min walk zone coverage) ── */
+    map.addSource('popwalkzone', { type: 'geojson', data: json_PopBgyClipped_WalkZ1_0 });
+    map.addLayer({
+      id: 'popwalkzone-fill', type: 'fill', source: 'popwalkzone',
+      layout: { visibility: 'none' },
+      paint: { 'fill-color': 'rgba(205,205,205,1.0)', 'fill-opacity': 1.0 }
+    });
+    map.addLayer({
+      id: 'popwalkzone-line', type: 'line', source: 'popwalkzone',
+      layout: { visibility: 'none' },
+      paint: { 'line-color': 'rgba(100,100,100,0.30)', 'line-width': 0.5 }
+    });
+
+    /* ── Underserved Areas — PopDiffWalk_Bgy_1 (barangays by underserved student density) ── */
+    /* Graduated by PopDenES (ES students/ha) matching qgis2web style:
+       0–1.757 → light red · 1.757–3.363 → medium red · 3.363+ → dark red */
+    map.addSource('popundersrv', { type: 'geojson', data: json_PopDiffWalk_Bgy_1, generateId: true });
+    map.addLayer({
+      id: 'popundersrv-fill', type: 'fill', source: 'popundersrv',
+      layout: { visibility: 'none' },
+      paint: {
+        'fill-color': ['step', ['get', 'PopDenES '],
+          'rgba(255,146,146,1.0)',
+          1.757, 'rgba(173,73,73,1.0)',
+          3.363, 'rgba(90,0,0,1.0)'
+        ],
+        'fill-opacity': 1.0
+      }
+    });
+    map.addLayer({
+      id: 'popundersrv-line', type: 'line', source: 'popundersrv',
+      layout: { visibility: 'none' },
+      paint: {
+        'line-color': ['case',
+          ['any', ['boolean', ['feature-state', 'hover'], false],
+                  ['boolean', ['feature-state', 'selected'], false]],
+          '#5a0000',              /* thick dark-red on hover/click */
+          'rgba(60,0,0,0.4)'     /* subtle at rest */
+        ],
+        'line-width': ['case',
+          ['any', ['boolean', ['feature-state', 'hover'], false],
+                  ['boolean', ['feature-state', 'selected'], false]],
+          2.8, 0.5
+        ]
+      }
+    });
+
+    /* ── Schools overlay — topmost appearance layer (WC + UA views, non-interactive) ── */
+    map.addLayer({
+      id: 'schools-walkcat-fill', type: 'fill', source: 'schools102b',
+      layout: { visibility: 'none' },
+      paint: { 'fill-color': '#9f9f9f', 'fill-opacity': 0.6 }
+    });
+    map.addLayer({
+      id: 'schools-walkcat-line', type: 'line', source: 'schools102b',
+      layout: { visibility: 'none' },
+      paint: { 'line-color': '#7a7a7a', 'line-width': 0.7 }
+    });
+    map.addLayer({
+      id: 'schools-walkcat-label', type: 'symbol', source: 'schools102b',
+      minzoom: 14,
+      layout: {
+        visibility: 'none',
+        'text-field': ['get', 'name'],
+        'text-font': ['literal', ['Open Sans Regular', 'Arial Unicode MS Regular']],
+        'text-size': 11,
+        'text-max-width': 7,
+        'text-anchor': 'top',
+        'text-offset': [0, 0.4],
+        'text-padding': 3,
+        'text-allow-overlap': false
+      },
+      paint: {
+        'text-color': '#111111',
+        'text-halo-color': 'rgba(255,255,255,0.88)',
+        'text-halo-width': 1.4
+      }
+    });
+
+    /* School search highlight */
+    map.addSource('school-highlight', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'school-hl-fill', type: 'fill', source: 'school-highlight',
+      paint: { 'fill-color': 'rgba(255,207,0,0.45)', 'fill-opacity': 1.0 }
+    });
+    map.addLayer({
+      id: 'school-hl-line', type: 'line', source: 'school-highlight',
+      paint: { 'line-color': '#e0b800', 'line-width': 2.5 }
+    });
+
+    /* ── NCR Barangays (MB) — 18 city files combined at runtime ── */
+    const _mbFC = (function () {
+      const names = [
+        'json_MB_CityofCaloocan','json_MB_CityofLasPinas','json_MB_CityofMakati',
+        'json_MB_CityofMalabon','json_MB_CityofMandaluyong','json_MB_CityofManila',
+        'json_MB_CityofMarikina','json_MB_CityofMuntinlupa','json_MB_CityofNavotas',
+        'json_MB_CityofParanaque','json_MB_CityofPasig','json_MB_CityofSanJuan',
+        'json_MB_CityofTaguig','json_MB_CityofValenzuela','json_MB_NULL',
+        'json_MB_PasayCity','json_MB_Pateros','json_MB_QuezonCity'
+      ];
+      const feats = names.flatMap(n => {
+        const v = window[n];
+        return (v && v.features) ? v.features : [];
+      });
+      console.log('[SchoolsCatch] MB barangay features loaded:', feats.length);
+      return { type: 'FeatureCollection', features: feats };
+    }());
+    /* Build Bgy_Code → feature lookup for NCR highlight panel */
+    window._mbByBgyCode = {};
+    (_mbFC.features || []).forEach(f => {
+      const code = f.properties && f.properties.Bgy_Code;
+      if (code) window._mbByBgyCode[code] = f;
+    });
+    map.addSource('mb', { type: 'geojson', data: _mbFC });
+    map.addLayer({
+      id: 'mb-fill', type: 'fill', source: 'mb',
+      layout: { visibility: 'none' },
+      paint: {
+        'fill-color': ['match', ['get', 'Mun_City'],
+          'Quezon City',         '#FFCF00',
+          'City of Manila',      '#F4A535',
+          'City of Caloocan',    '#E07B3F',
+          'City of Valenzuela',  '#C05B3A',
+          'City of Malabon',     '#8B3A3A',
+          'City of Navotas',     '#5C6BC0',
+          'City of Pasig',       '#42A5C8',
+          'City of Marikina',    '#38A89D',
+          'City of San Juan',    '#5AAD7A',
+          'City of Mandaluyong', '#8BC34A',
+          'City of Makati',      '#9B7FC8',
+          'City of Taguig',      '#C77DBF',
+          'City of Parañaque',   '#E8A5A5',
+          'City of Las Piñas',   '#A5C8A0',
+          'City of Muntinlupa',  '#5C8B5C',
+          'Pasay City',          '#F5C77A',
+          'Pateros',             '#B0967E',
+          /* default / NULL */   '#BDBDBD'
+        ],
+        'fill-opacity': 0.25
+      }
+    });
+    map.addLayer({
+      id: 'mb-line', type: 'line', source: 'mb',
+      layout: { visibility: 'none' },
+      paint: { 'line-color': '#838485', 'line-width': 0.36 }
+    });
+
+    /* bgycity layers removed — superseded by mb (Barangays NCR) */
+
+    /* ── Barangay NCR highlight — topmost, empty until a WC/UA polygon is selected ── */
+    map.addSource('bgy-ncr-hl', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+      id: 'bgy-ncr-hl-line', type: 'line', source: 'bgy-ncr-hl',
+      paint: { 'line-color': '#000000', 'line-width': 3.0 }
+    });
+
+    /* ── Reorder: move sawalk directly behind schools-walkcat ──
+       MapLibre addLayer order controls z-position; moveLayer lets us
+       reorder without re-adding. sawalk layers end up just below schools-walkcat
+       and above bgycity / all analysis layers. */
+    ['sawalk-fill', 'sawalk-line'].forEach(id => {
+      if (map.getLayer(id)) map.moveLayer(id, 'schools-walkcat-fill');
+    });
+
+    /* ── Reorder: cities on top of all analysis layers, just below NCR highlight ──
+       City fill (selection highlight only) + city boundary lines must render above
+       walkcat / underserved / MB layers so the boundaries are always readable. */
+    ['cities-fill', 'cities-line'].forEach(id => {
+      if (map.getLayer(id)) map.moveLayer(id, 'bgy-ncr-hl-line');
+    });
+  }
+
+  /* ── Home screen ─────────────────────────────────── */
+  /* Zoom level below which the home screen returns — "way beyond NCR" */
+  const RETREAT_ZOOM = 6;
+  let inMapMode = false;
+
+  const PANEL_IDS = ['map-title', 'about-panel', 'lp', 'rp', 'tnav', 'blp', 'corner-logo'];
+
+  function showHome() {
+    const hs = document.getElementById('home');
+    hs.removeAttribute('hidden');
+  }
+
+  document.getElementById('home-btn').addEventListener('click', enterMap);
+
+  function enterMap() {
+    const hs    = document.getElementById('home');
+    const hLeft = document.getElementById('home-left');
+
+    /* 1. Slide home panel out, fade overlay */
+    hLeft.classList.add('out');
+    setTimeout(() => hs.classList.add('fade-out'), 200);
+
+    /* 2. Fly to NCR */
+    map.flyTo({ center: NCR_CENTER, zoom: NCR_ZOOM, duration: 1500, essential: true });
+
+    /* 3. Stagger dashboard panels in */
+    setTimeout(() => {
+      document.getElementById('map-title').classList.add('in');
+      document.getElementById('about-panel').classList.add('in');
+      document.getElementById('lp').classList.add('in');
+      document.getElementById('corner-logo').classList.add('in');
+      setTimeout(() => document.getElementById('blp').classList.add('in'),  60);
+      setTimeout(() => document.getElementById('rp').classList.add('in'),  120);
+      setTimeout(() => document.getElementById('tnav').classList.add('in'), 250);
+      /* Search bars follow the panel stagger — schools view is default */
+      setTimeout(() => document.getElementById('school-search-bar')?.classList.add('vis'), 380);
+    }, 350);
+
+    /* 4. Unlock zoom fully — zoom-out listener will handle home return */
+    setTimeout(() => { map.setMinZoom(0); inMapMode = true; }, 1800);
+  }
+
+  /* Return to home when user zooms way out beyond NCR scale */
+  function returnToHome() {
+    if (!inMapMode) return;
+    inMapMode = false;
+
+    const hs    = document.getElementById('home');
+    const hLeft = document.getElementById('home-left');
+    if (!hs) return;
+
+    /* Stagger panels out (reverse order) */
+    ['tnav', 'rp', 'blp', 'corner-logo', 'lp', 'about-panel', 'map-title'].forEach((id, i) => {
+      setTimeout(() => document.getElementById(id)?.classList.remove('in'), i * 55);
+    });
+    /* Hide search bars when returning to home */
+    document.getElementById('school-search-bar')?.classList.remove('vis');
+    document.getElementById('bgy-search-bar')?.classList.remove('vis');
+    document.getElementById('bgy-deselect-btn')?.classList.remove('vis');
+
+    /* Slide home screen back in after panels start leaving */
+    setTimeout(() => {
+      hLeft.classList.remove('out');
+      hs.classList.remove('fade-out');
+    }, 280);
+  }
+
+  /* Wire the zoom-out trigger inside wireMapInteractions */
+
+  /* ── Layer toggles (sidebar ↔ nav synced) ─────────── */
+  function wireToggles() {
+    LAYER_TOGGLES.forEach(({ ids, layers }) => {
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', function () {
+          const vis = this.checked ? 'visible' : 'none';
+          layers.forEach(lid => {
+            if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', vis);
+          });
+          /* Sync siblings */
+          ids.forEach(sibId => {
+            if (sibId !== id) {
+              const sib = document.getElementById(sibId);
+              if (sib) sib.checked = this.checked;
+            }
+          });
+        });
+      });
+    });
+  }
+
+  /* ── Underserved pop-density toggle: mutual exclusion with walkzone + legend ── */
+  document.getElementById('lp-bgyden-unsrv')?.addEventListener('change', function () {
+    /* Show/hide density legend */
+    const leg = document.getElementById('unsrv-den-legend');
+    if (leg) leg.style.display = this.checked ? '' : 'none';
+    /* When density turns ON → turn OFF 15-min Walking Catchment */
+    if (this.checked) {
+      const pwzChk = document.getElementById('lp-popwalkzone');
+      if (pwzChk) {
+        pwzChk.checked = false;
+        setVis(['popwalkzone-fill', 'popwalkzone-line'], false);
+      }
+    }
+  });
+  /* ── Walking Catchment toggle: turn off density when walkzone turns ON ── */
+  document.getElementById('lp-popwalkzone')?.addEventListener('change', function () {
+    if (this.checked) {
+      const pduChk = document.getElementById('lp-bgyden-unsrv');
+      if (pduChk && pduChk.checked) {
+        pduChk.checked = false;
+        setVis(['bgy-den-undersrv-fill', 'bgy-den-undersrv-line'], false);
+        const leg = document.getElementById('unsrv-den-legend');
+        if (leg) leg.style.display = 'none';
+      }
+    }
+  }, true); /* capture so this fires before the LAYER_TOGGLES generic handler */
+
+  /* ── Deselect features — clears all clicked/selected features ──────── */
+  function deselectAllFeatures() {
+    /* Clear city selection */
+    if (selectedId !== null) {
+      map.setFeatureState({ source: 'cities', id: selectedId }, { selected: false });
+      selectedId = null;
+    }
+    selectedCityName = null;
+    const fselEl = document.getElementById('fsel');
+    if (fselEl) fselEl.value = '';
+    applyLayerFilter();
+    /* Clear catchment lock + highlight */
+    lockedCatchmentFid = null;
+    clearCatchmentHighlight();
+    closeCatchmentPanel();
+    /* Clear school highlight */
+    const shlSrc = map.getSource('school-highlight');
+    if (shlSrc) shlSrc.setData({ type: 'FeatureCollection', features: [] });
+    /* Clear barangay hover state */
+    if (hoveredBgyId !== null) {
+      try { map.setFeatureState({ source: 'bgy-borders', id: hoveredBgyId }, { hover: false }); } catch (_) {}
+      hoveredBgyId = null;
+    }
+    if (hoveredBgyCatchId !== null) {
+      try { map.setFeatureState({ source: 'bgycatch', id: hoveredBgyCatchId }, { hover: false }); } catch (_) {}
+      hoveredBgyCatchId = null;
+    }
+    if (selectedBgyCatchId !== null) {
+      try { map.setFeatureState({ source: 'bgycatch', id: selectedBgyCatchId }, { selected: false }); } catch (_) {}
+      selectedBgyCatchId = null;
+    }
+    if (selectedUndersrvId !== null) {
+      try { map.setFeatureState({ source: 'popundersrv', id: selectedUndersrvId }, { selected: false }); } catch (_) {}
+      selectedUndersrvId = null;
+    }
+    /* Clear bgy search bar + highlight */
+    const bsiEl = document.getElementById('bgy-search-input');
+    if (bsiEl) bsiEl.value = '';
+    const bacEl = document.getElementById('bgy-autocomplete');
+    if (bacEl) bacEl.classList.remove('open');
+    const bcbEl = document.getElementById('bgy-clear-btn');
+    if (bcbEl) bcbEl.classList.remove('vis');
+    const bhlSrc = map.getSource('bgy-highlight');
+    if (bhlSrc) bhlSrc.setData({ type: 'FeatureCollection', features: [] });
+    /* Clear school name label + deselect button */
+    _clearSchoolSelLabel();
+    document.getElementById('school-deselect-btn')?.classList.remove('vis');
+    /* Close right panel */
+    closeRightPanel();
+  }
+  document.querySelectorAll('.deselect-features-btn').forEach(btn => {
+    btn.addEventListener('click', deselectAllFeatures);
+  });
+
+  /* ── Reset toggles — restores layer/level defaults ─────────────────── */
+  document.getElementById('reset-toggles-btn')?.addEventListener('click', () => {
+    const activeView = document.querySelector('.vbtn.on')?.dataset.view;
+
+    if (activeView === 'schools' || !activeView) {
+      /* Schools defaults: Schools ON, SAWalk OFF, all levels ON */
+      ['lp-schools102b'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.checked = true;
+      });
+      ['schools102b-fill','schools102b-line'].forEach(lid => {
+        if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', 'visible');
+      });
+      ['lp-sawalk'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.checked = false;
+      });
+      ['sawalk-fill','sawalk-line'].forEach(lid => {
+        if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', 'none');
+      });
+      /* Reset level filters */
+      ['lv-all','lv-es','lv-jhs','lv-shs','lv-jhs-shs','lv-multi','lv-none'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.checked = true;
+      });
+      showAllLevels = true;
+      applyLayerFilter();
+
+    } else if (activeView === 'walkcat') {
+      /* Walkcat defaults: Default view ON, Density OFF */
+      const defChk = document.getElementById('bgy-view-default');
+      const denChk = document.getElementById('bgy-view-density');
+      if (defChk) defChk.checked = true;
+      if (denChk) denChk.checked = false;
+      applyBgyVisibility();
+    }
+  });
+
+  /* ── View / Scale selector (spec §6) ──────────────── */
+  function wireViewButtons() {
+    document.querySelectorAll('.vbtn').forEach(btn => {
+      btn.addEventListener('click', function () {
+        document.querySelectorAll('.vbtn').forEach(b => {
+          b.classList.remove('on'); b.setAttribute('aria-pressed', 'false');
+        });
+        this.classList.add('on'); this.setAttribute('aria-pressed', 'true');
+        applyView(this.dataset.view);
+      });
+    });
+  }
+
+  const ALL_LAYERS_MAP = {
+    'water-fill': true,
+    'cities-fill': true, 'cities-line': true,
+    'sawalk-fill': true, 'sawalk-line': true,
+    'schools102b-fill': true, 'schools102b-line': true,
+    'bgy-catch-fill': true, 'bgy-catch-line': true, 'bgy-catch-density-fill': true, 'bgy-catch-label': true,
+    'barangays-ncr-fill': true, 'bgy-borders-line': true, 'bgy-hl-fill': true, 'bgy-hl-line': true,
+    'schools-walkcat-fill': true, 'schools-walkcat-line': true, 'schools-walkcat-label': true,
+    'popwalkzone-fill': true, 'popwalkzone-line': true,
+    'popundersrv-fill': true, 'popundersrv-line': true,
+    'bgy-den-undersrv-fill': true, 'bgy-den-undersrv-line': true,
+  };
+
+  function setVis(layerIds, visible) {
+    layerIds.forEach(id => {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+    });
+  }
+
+  /* ── Barangay layer visibility helper ────────────── */
+  /* Reads bgy-view-default / bgy-view-density checkboxes directly.
+     The two views are mutually exclusive; borders show when either is on. */
+  function applyBgyVisibility() {
+    const defOn = document.getElementById('bgy-view-default')?.checked  ?? false;
+    const denOn = document.getElementById('bgy-view-density')?.checked  ?? false;
+    const anyOn = defOn || denOn;
+    /* Catchment borders + fills follow view toggles.
+       bgy-borders-line / barangays-ncr-fill are base-layer controlled (lp-bgy-base). */
+    setVis(['bgy-catch-line'],            anyOn);
+    setVis(['bgy-catch-label'],           anyOn);
+    setVis(['bgy-catch-fill'],            defOn);
+    setVis(['bgy-catch-density-fill'],    denOn);
+    /* Density legend follows density toggle */
+    const dl = document.getElementById('density-legend');
+    if (dl) dl.style.display = denOn ? '' : 'none';
+  }
+
+  function applyView(view) {
+    currentView = view;
+    map.removeFeatureState({ source: 'cities' });
+    map.removeFeatureState({ source: 'water' });
+    deselectAllFeatures(); /* clears all selections, panels, highlights on every view switch */
+
+    if (view === 'schools') {
+      /* Schools view: level-coded interactive layer ON, walkcat overlay OFF */
+      setVis(['water-fill', 'cities-fill', 'cities-line', 'schools102b-fill', 'schools102b-line'], true);
+      setVis(['schools-walkcat-fill', 'schools-walkcat-line', 'schools-walkcat-label'], false);
+      /* Sawalk: always off on view entry; restore hover-aware opacity for when user turns it on */
+      const sawSchChk = document.getElementById('lp-sawalk');
+      if (sawSchChk) sawSchChk.checked = false;
+      setVis(['sawalk-fill', 'sawalk-line'], false);
+      if (map.getLayer('sawalk-fill'))
+        map.setPaintProperty('sawalk-fill', 'fill-opacity',
+          ['case', ['boolean', ['feature-state', 'hover'], false], 0.55, 0.25]);
+      /* Bgy walkcat + underserved layers — off in schools view */
+      setVis(['bgy-catch-fill', 'bgy-catch-line', 'bgy-catch-density-fill', 'bgy-catch-label', 'bgy-hl-fill', 'bgy-hl-line'], false);
+      setVis(['barangays-ncr-fill', 'bgy-borders-line'], false);
+      setVis(['popwalkzone-fill', 'popwalkzone-line', 'popundersrv-fill', 'popundersrv-line',
+              'bgy-den-undersrv-fill', 'bgy-den-undersrv-line'], false);
+      /* Clear bgy/school search state from walkcat or underserved */
+      const bsi = document.getElementById('bgy-search-input');
+      if (bsi) bsi.value = '';
+      const bac = document.getElementById('bgy-autocomplete');
+      if (bac) bac.classList.remove('open');
+      const bcb = document.getElementById('bgy-clear-btn');
+      if (bcb) bcb.classList.remove('vis');
+      const bhlSrc = map.getSource('bgy-highlight');
+      if (bhlSrc) bhlSrc.setData({ type: 'FeatureCollection', features: [] });
+      const shlSrc = map.getSource('school-highlight');
+      if (shlSrc) shlSrc.setData({ type: 'FeatureCollection', features: [] });
+      /* Hide bgy search bar + deselect pill, show school search bar */
+      document.getElementById('bgy-search-bar')?.classList.remove('vis');
+      document.getElementById('bgy-deselect-btn')?.classList.remove('vis');
+      document.getElementById('school-search-bar')?.classList.add('vis');
+      /* Rebuild school labels after map settles on new view */
+      if (typeof window._rebuildSchoolLabels === 'function') {
+        map.once('idle', window._rebuildSchoolLabels);
+      }
+
+    } else if (view === 'walkcat') {
+      /* Schools: hide the interactive level-coded layer; show the flat walkcat overlay instead.
+         Label layer visibility is set to 'visible' here; minzoom:14 on the layer handles auto-show. */
+      setVis(['schools102b-fill', 'schools102b-line'], false);
+      setVis(['schools-walkcat-fill', 'schools-walkcat-line', 'schools-walkcat-label'], true);
+      /* Sawalk: always off on view entry; user toggles via lp-sawalk-wc */
+      const sawWcChkWC = document.getElementById('lp-sawalk-wc');
+      if (sawWcChkWC) sawWcChkWC.checked = false;
+      setVis(['sawalk-fill', 'sawalk-line'], false);
+      setVis(['water-fill', 'cities-line'], true);
+      setVis(['cities-fill'], false);
+      /* Always keep bgy highlight layers visible (empty FC = invisible naturally) */
+      setVis(['bgy-hl-fill', 'bgy-hl-line'], true);
+      /* Ensure at least Default view is on when entering walkcat */
+      const defChk = document.getElementById('bgy-view-default');
+      const denChk = document.getElementById('bgy-view-density');
+      if (defChk && denChk && !defChk.checked && !denChk.checked) {
+        defChk.checked = true; /* activate Default if neither is on */
+      }
+      applyBgyVisibility(); /* shows bgy-borders-line + fills per toggle state */
+      /* Clear school search state */
+      const ssi = document.getElementById('school-search-input');
+      if (ssi) ssi.value = '';
+      const sac = document.getElementById('school-autocomplete');
+      if (sac) sac.classList.remove('open');
+      const scb = document.getElementById('school-clear-btn');
+      if (scb) scb.classList.remove('vis');
+      const shlSrc = map.getSource('school-highlight');
+      if (shlSrc) shlSrc.setData({ type: 'FeatureCollection', features: [] });
+      /* Show bgy search bar + deselect pill, hide school search bar */
+      document.getElementById('bgy-search-bar')?.classList.add('vis');
+      document.getElementById('bgy-deselect-btn')?.classList.add('vis');
+      document.getElementById('school-search-bar')?.classList.remove('vis');
+      /* Immediately hide school labels (schools layer is now off) */
+      if (typeof window._projectSchoolLabels === 'function') window._projectSchoolLabels();
+      /* Hide underserved layers */
+      setVis(['popwalkzone-fill', 'popwalkzone-line', 'popundersrv-fill', 'popundersrv-line',
+              'bgy-den-undersrv-fill', 'bgy-den-undersrv-line'], false);
+
+    } else if (view === 'underserved') {
+      /* Underserved Areas: show new layers; hide interactive schools layer, show flat appearance layer */
+      setVis(['schools102b-fill', 'schools102b-line'], false);
+      setVis(['schools-walkcat-fill', 'schools-walkcat-line', 'schools-walkcat-label'], true);
+      /* Sawalk: always off on view entry; user toggles via lp-sawalk-wc */
+      const sawWcChkUA = document.getElementById('lp-sawalk-wc');
+      if (sawWcChkUA) sawWcChkUA.checked = false;
+      setVis(['sawalk-fill', 'sawalk-line'], false);
+      setVis(['bgy-catch-fill', 'bgy-catch-line', 'bgy-catch-density-fill', 'bgy-catch-label',
+              'bgy-hl-fill', 'bgy-hl-line'], false);
+      /* Base reference layers */
+      setVis(['water-fill', 'cities-line'], true);
+      setVis(['cities-fill'], false);
+      /* Underserved layers — walkzone + underserved on by default, density off */
+      const pwzChk = document.getElementById('lp-popwalkzone');
+      const pusChk = document.getElementById('lp-popundersrv');
+      const pduChk = document.getElementById('lp-bgyden-unsrv');
+      if (pwzChk) pwzChk.checked = true;
+      if (pusChk) pusChk.checked = true;
+      if (pduChk) pduChk.checked = false;
+      setVis(['popwalkzone-fill', 'popwalkzone-line'], true);
+      setVis(['popundersrv-fill', 'popundersrv-line'], true);
+      setVis(['bgy-den-undersrv-fill', 'bgy-den-undersrv-line'], false);
+      /* Show shared search bar; hide schools-only bar */
+      document.getElementById('bgy-search-bar')?.classList.add('vis');
+      document.getElementById('bgy-deselect-btn')?.classList.add('vis');
+      document.getElementById('school-search-bar')?.classList.remove('vis');
+      /* Clear any leftover school search state */
+      const ssi2 = document.getElementById('school-search-input');
+      if (ssi2) ssi2.value = '';
+      const shlSrc2 = map.getSource('school-highlight');
+      if (shlSrc2) shlSrc2.setData({ type: 'FeatureCollection', features: [] });
+    }
+
+    showLpSectionsForView(view);
+    syncCheckboxes();
+  }
+
+  /* Show/hide LP sections that carry a data-show-in attribute.
+     IMPORTANT: must use 'block' (not '') — empty string reverts to the CSS rule
+     .lp-sec[data-show-in]{display:none} which would keep the section hidden. */
+  function showLpSectionsForView(view) {
+    document.querySelectorAll('#lp .lp-sec[data-show-in]').forEach(sec => {
+      const targets = sec.dataset.showIn.split(',');
+      sec.style.display = (targets.includes('all') || targets.includes(view)) ? 'block' : 'none';
+    });
+  }
+
+  /* ── Collapsible LP sections ─────────────────────────
+     Wraps section content in .lp-sec-body, injects a chevron button into each
+     .lp-hd that has sibling content. Click toggles .collapsed on the section. */
+  function initLpCollapse() {
+    document.querySelectorAll('#lp .lp-sec').forEach(sec => {
+      const hd = sec.querySelector('.lp-hd');
+      if (!hd) return;
+
+      /* Wrap all non-header children in a body div */
+      const body = document.createElement('div');
+      body.className = 'lp-sec-body';
+      Array.from(sec.children).forEach(child => {
+        if (child !== hd) body.appendChild(child);
+      });
+      if (!body.children.length) return; /* skip header-only sections */
+      sec.appendChild(body);
+
+      /* Inject chevron into header */
+      const btn = document.createElement('button');
+      btn.className = 'lp-collapse-btn';
+      btn.setAttribute('aria-label', 'Toggle section');
+      btn.innerHTML = `<svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+      hd.appendChild(btn);
+
+      btn.addEventListener('click', () => sec.classList.toggle('collapsed'));
+    });
+  }
+
+  function syncCheckboxes() {
+    LAYER_TOGGLES.forEach(({ ids, layers }) => {
+      const vis = layers.some(lid => map.getLayer(lid) &&
+        map.getLayoutProperty(lid, 'visibility') !== 'none');
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.checked = vis;
+      });
+    });
+    /* Sync bgy view checkboxes against actual layer visibility */
+    const defChk = document.getElementById('bgy-view-default');
+    const denChk = document.getElementById('bgy-view-density');
+    if (defChk && map.getLayer('bgy-catch-fill'))
+      defChk.checked = map.getLayoutProperty('bgy-catch-fill', 'visibility') !== 'none';
+    if (denChk && map.getLayer('bgy-catch-density-fill'))
+      denChk.checked = map.getLayoutProperty('bgy-catch-density-fill', 'visibility') !== 'none';
+  }
+
+  /* ── Catchment highlight helpers (module-level) ─────── */
+  let _catchLabelCoord = null; /* [lng, lat] of current centroid for reprojection on move */
+
+  /* ── Selected-school name label ─────────────────────── */
+  let _selectedSchoolCoord = null;
+  let _selectedSchoolName  = '';
+
+  function _showSchoolSelLabel() {
+    const el = document.getElementById('school-sel-label');
+    if (!el || !_selectedSchoolCoord) return;
+    el.textContent = _selectedSchoolName || 'School';
+    const pt = map.project(_selectedSchoolCoord);
+    el.style.left = pt.x + 'px';
+    el.style.top  = pt.y + 'px';
+    el.classList.add('vis');
+    el.setAttribute('aria-hidden', 'false');
+  }
+
+  function _clearSchoolSelLabel() {
+    const el = document.getElementById('school-sel-label');
+    if (el) { el.classList.remove('vis'); el.setAttribute('aria-hidden', 'true'); }
+    _selectedSchoolCoord = null;
+    _selectedSchoolName  = '';
+  }
+
+  function _positionCatchLabel(lngLat) {
+    const el = document.getElementById('catch-label');
+    if (!el) return;
+    const pt = map.project(lngLat);
+    el.style.left = pt.x + 'px';
+    el.style.top  = pt.y + 'px';
+    el.classList.add('vis');
+    el.setAttribute('aria-hidden', 'false');
+  }
+
+  function clearCatchmentHighlight() {
+    const src = map.getSource('sawalk-highlight');
+    if (src) src.setData({ type: 'FeatureCollection', features: [] });
+    const el = document.getElementById('catch-label');
+    if (el) { el.classList.remove('vis'); el.setAttribute('aria-hidden', 'true'); }
+    _catchLabelCoord = null;
+  }
+
+  /* ── Basemap switching ────────────────────────────── */
+  function switchBasemap(id) {
+    if (!BASEMAPS[id] || id === currentBasemapId) return;
+    currentBasemapId = id;
+    document.getElementById('map').dataset.basemap = id;
+    document.querySelectorAll('.bm-btn').forEach(b => {
+      b.classList.toggle('on', b.dataset.bm === id);
+    });
+    /* Register once-handler BEFORE setStyle so it fires exactly when the new style loads */
+    map.once('style.load', () => {
+      lockedCatchmentFid = null;
+      closeCatchmentPanel();
+      addLocalLayers();
+      applyTogglesFromDOM();
+      applyLayerFilter();
+    });
+    map.setStyle(BASEMAPS[id].style, { diff: false });
+  }
+
+  function wireBasemapButtons() {
+    document.querySelectorAll('.bm-btn').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const bmId = this.dataset.bm;
+        if (bmId !== currentBasemapId) switchBasemap(bmId);
+      });
+    });
+  }
+
+  /* Restore layer visibility from DOM checkbox states after basemap switch */
+  function applyTogglesFromDOM() {
+    LAYER_TOGGLES.forEach(({ ids, layers }) => {
+      const el = document.getElementById(ids[0]);
+      if (!el) return;
+      const vis = el.checked ? 'visible' : 'none';
+      layers.forEach(lid => {
+        if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', vis);
+      });
+    });
+    /* Restore bgy layer visibility from the view toggle checkboxes */
+    applyBgyVisibility();
+    /* Re-apply view-specific constraints (e.g. hide schools in walkcat view).
+       bgy-borders-line / barangays-ncr-fill are base-layer controlled — left as-is. */
+    const activeView = document.querySelector('.vbtn.on')?.dataset.view;
+    if (activeView === 'walkcat') {
+      setVis(['schools102b-fill', 'schools102b-line', 'cities-fill'], false);
+      applyBgyVisibility();
+    }
+  }
+
+  /* ── School level + city combined filter ─────────── */
+  function applyLayerFilter() {
+    /* City filter — case-insensitive: cities layer has mixed-case "Manila",
+       school/sawalk data uses all-caps "MANILA". Upcase both sides. */
+    const cityFilter = selectedCityName
+      ? ['==', ['upcase', ['get', 'Mun_Name']], selectedCityName.toUpperCase()]
+      : null;
+
+    let schoolFilter = cityFilter || null;
+
+    if (showAllLevels) {
+      /* All Schools mode: uniform yellow, no level filter */
+      if (map.getLayer('schools102b-fill')) {
+        map.setPaintProperty('schools102b-fill', 'fill-color', 'rgba(255,238,130,1.0)');
+      }
+    } else {
+      /* Level filter — use LevelClass field */
+      const activeCategories = [];
+      if (levelStates.ES)         activeCategories.push('ES');
+      if (levelStates.JHS)        activeCategories.push('JHS');
+      if (levelStates.SHS)        activeCategories.push('SHS');
+      if (levelStates.JHS_SHS)    activeCategories.push('JHS_SHS');
+      if (levelStates.ES_JHS_SHS) activeCategories.push('ES_JHS_SHS');
+      if (levelStates.NONE)       activeCategories.push('NONE');
+
+      let levelFilter = null;
+      if (activeCategories.length === 0) {
+        levelFilter = ['literal', false];
+      } else if (activeCategories.length < 6) {
+        levelFilter = ['match', ['get', 'LevelClass'], activeCategories, true, false];
+      }
+
+      if (cityFilter && levelFilter)  schoolFilter = ['all', cityFilter, levelFilter];
+      else if (levelFilter)           schoolFilter = levelFilter;
+
+      /* Switch to colour-by-level expression */
+      if (map.getLayer('schools102b-fill')) {
+        map.setPaintProperty('schools102b-fill', 'fill-color', SCHOOL_COLOR_EXPR);
+      }
+    }
+
+    ['schools102b-fill', 'schools102b-line'].forEach(lid => {
+      if (map.getLayer(lid)) map.setFilter(lid, schoolFilter);
+    });
+
+    /* Sawalk layers — city filter only (no level classification on flat catchments) */
+    ['sawalk-fill', 'sawalk-line', 'sawalk-hl-fill', 'sawalk-hl-line'].forEach(lid => {
+      if (map.getLayer(lid)) map.setFilter(lid, cityFilter || null);
+    });
+
+  }
+
+  function wireLevelToggles() {
+    const allEl = document.getElementById('lv-all');
+    const LEVEL_MAP = { 'lv-es': 'ES', 'lv-jhs': 'JHS', 'lv-shs': 'SHS', 'lv-jhs-shs': 'JHS_SHS', 'lv-multi': 'ES_JHS_SHS', 'lv-none': 'NONE' };
+
+    /* "All Schools" toggle — resets to uniform yellow and clears level filter */
+    if (allEl) {
+      allEl.addEventListener('change', function () {
+        showAllLevels = this.checked;
+        if (showAllLevels) {
+          /* Restore all individual level toggles to checked */
+          Object.keys(LEVEL_MAP).forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.checked = true;
+          });
+          levelStates = { ES: true, JHS: true, SHS: true, JHS_SHS: true, ES_JHS_SHS: true, NONE: true };
+        }
+        applyLayerFilter();
+      });
+    }
+
+    /* Individual level toggles — enter colour-by-level mode */
+    Object.entries(LEVEL_MAP).forEach(([id, key]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('change', function () {
+        showAllLevels = false;
+        if (allEl) allEl.checked = false;
+        levelStates[key] = this.checked;
+        applyLayerFilter();
+      });
+    });
+  }
+
+  /* ── Map interactions ─────────────────────────────── */
+  let currentView  = 'schools'; /* tracks active view for conditional interactivity */
+  let hoveredId    = null;
+  let hoveredSrc   = null;
+  let selectedId   = null;
+  let hoveredBgyId       = null; /* feature-state hover ID for barangays-ncr-fill */
+  let hoveredBgyCatchId  = null; /* feature-state hover ID for bgy-catch-fill / bgy-catch-density-fill */
+  let selectedBgyCatchId = null; /* feature-state selected ID (click) for bgycatch */
+  let hoveredUndersrvId  = null; /* feature-state hover ID for popundersrv-fill */
+  let selectedUndersrvId = null; /* feature-state selected ID for popundersrv-fill */
+
+  const INTERACTIVE_LAYERS = [
+    { layerId: 'cities-fill',      source: 'cities',      label: 'Cities' },
+    { layerId: 'water-fill',       source: 'water',       label: 'Water' },
+    { layerId: 'sawalk-fill',      source: 'sawalk',      label: '15-min Walking Catchment' },
+    { layerId: 'schools102b-fill', source: 'schools102b', label: 'Schools' },
+  ];
+
+  /* ── Hover tooltip config per analysis layer ──────── */
+  /* Fields derived from qgis2web fieldLabels "header label - visible with data" */
+  /* HOVER_MIN_ZOOM — tooltip only shows at or above this zoom for the given layer.
+     Empty by default; add entries like { 'layer-id': 12.0 } to gate a layer's tooltip. */
+  const HOVER_MIN_ZOOM = {};
+
+  const HOVER_FIELDS = {
+    'barangays-ncr-fill': [
+      { key: 'Bgy_Name', label: 'Barangay' },
+      { key: 'Mun_City', fallback: 'Mun_Name', label: 'City' },
+    ],
+    'bgy-catch-fill': [
+      { key: 'Bgy_Name', label: 'Barangay' },
+      { key: 'Mun_City', fallback: 'Mun_Name', label: 'City' },
+    ],
+    'bgy-catch-density-fill': [
+      { key: 'Bgy_Name', label: 'Barangay' },
+      { key: 'Mun_City', fallback: 'Mun_Name', label: 'City' },
+    ],
+    'sawalk-fill': [
+      { key: 'School Name',   label: 'School' },
+      { key: 'School Type',   label: 'Type' },
+      { key: 'Mun_Name',      label: 'Municipality' },
+      { key: 'Bgy_Name',      label: 'Barangay' },
+      { key: 'WCatchESsum',   label: 'Walk Catch ES' },
+      { key: 'WCatchJHSsum',  label: 'Walk Catch JHS' },
+      { key: 'WCatchSHSsum',  label: 'Walk Catch SHS' },
+      { key: '2021 ES',       label: 'Enrol 2021 ES' },
+      { key: '2021 JHS',      label: 'Enrol 2021 JHS' },
+      { key: '2021 SHS',      label: 'Enrol 2021 SHS' },
+    ],
+    'schools102b-fill': [
+      { key: 'name', fallback: '00SchoolName', label: 'School Name' },
+      { key: 'SchoolType',   label: 'Type' },
+      { key: 'SchoolLevel',  label: 'Level' },
+      { key: 'Mun_Name',     label: 'Municipality' },
+      { key: 'Bgy_Name',         label: 'Barangay' },
+      { key: 'FootprintPct',     label: 'Footprint %' },
+      { key: 'TreeExtentPct',    label: 'Tree Cover %' },
+    ],
+    'popundersrv-fill': [
+      { key: 'Bgy_Name', label: 'Barangay' },
+      { key: 'Mun_City', label: 'City' },
+    ],
+    'bgy-den-undersrv-fill': [
+      { key: 'Bgy_Name', label: 'Barangay' },
+      { key: 'Mun_City', label: 'City' },
+    ],
+  };
+
+  /* Layers that append a "Click to view statistics" grey hint to their hover tooltip */
+  const HOVER_CLICK_HINT = new Set(['bgy-catch-fill', 'bgy-catch-density-fill', 'popundersrv-fill', 'bgy-den-undersrv-fill']);
+
+  /* Layers that show a static catchment label in their tooltip */
+  const SCHOOL_CATCHMENT_HINT = new Set(['schools102b-fill']);
+
+  /* Per-layer hint colour + indicator dot. Layers not listed get the default grey hint. */
+  const HOVER_HINT_CONFIG = {
+    'bgy-catch-density-fill':  { color: '#7c5e1a' }, /* walkcat density — dark amber */
+    'popundersrv-fill':        { color: '#5a0000' }, /* underserved — dark red */
+    'bgy-den-undersrv-fill':   { color: '#be9623' }, /* underserved density — dark yellow */
+  };
+
+  /* Layers that use the stacked single-column tooltip layout (label above, bold value below) */
+  const HOVER_STACKED_STYLE = new Set([
+    'bgy-catch-fill', 'bgy-catch-density-fill', 'barangays-ncr-fill',
+    'popundersrv-fill', 'bgy-den-undersrv-fill'
+  ]);
+
+  /* ── Catchment panel fields (user-configurable visibility) ─ */
+  const CATCHMENT_FIELDS = [
+    { key: 'School Name',  label: 'School Name',      vis: true  },
+    { key: 'School Type',  label: 'School Type',       vis: true  },
+    { key: 'Mun_Name',     label: 'Municipality',      vis: true  },
+    { key: 'Bgy_Name',     label: 'Barangay',          vis: false },
+    { key: 'WCatchESsum',  label: 'Walk Catch (ES)',   vis: true  },
+    { key: 'WCatchJHSsum', label: 'Walk Catch (JHS)',  vis: true  },
+    { key: 'WCatchSHSsum', label: 'Walk Catch (SHS)',  vis: true  },
+    { key: '2021 ES',      label: 'Enrolment (ES)',    vis: true  },
+    { key: '2021 JHS',     label: 'Enrolment (JHS)',   vis: true  },
+    { key: '2021 SHS',     label: 'Enrolment (SHS)',   vis: true  },
+  ];
+
+  function populateCatchmentPanel(sawalkFeature) {
+    const cpEl   = document.getElementById('cp');
+    const cpBody = document.getElementById('cp-body');
+    if (!cpEl || !cpBody) return;
+    const props = sawalkFeature.properties;
+    const rows = CATCHMENT_FIELDS
+      .filter(f => props[f.key] !== null && props[f.key] !== undefined && props[f.key] !== '')
+      .map(f => {
+        const raw = props[f.key];
+        const val = (typeof raw === 'number') ? +raw.toFixed(2) : raw;
+        return `<div class="prop-row">
+          <span class="prop-key">${f.label}</span>
+          <span class="prop-val">${val}</span>
+        </div>`;
+      }).join('');
+    cpBody.innerHTML = rows ||
+      '<div class="prop-row"><span class="prop-val" style="color:var(--txt-mid);font-size:.78rem">No catchment data.</span></div>';
+    cpEl.setAttribute('aria-hidden', 'false');
+    cpEl.classList.add('in');
+  }
+
+  function closeCatchmentPanel() {
+    const cpEl = document.getElementById('cp');
+    if (cpEl) { cpEl.classList.remove('in'); cpEl.setAttribute('aria-hidden', 'true'); }
+    currentSawalkFeature = null;
+  }
+
+  function buildCatchmentColumnPicker() {
+    const cpCols = document.getElementById('cp-cols');
+    if (!cpCols) return;
+    cpCols.innerHTML = CATCHMENT_FIELDS.map((f, i) =>
+      `<label class="cp-col-row">
+        <input type="checkbox" data-ci="${i}" ${f.vis ? 'checked' : ''}>
+        <span>${f.label}</span>
+      </label>`
+    ).join('');
+    cpCols.querySelectorAll('input').forEach(cb => {
+      cb.addEventListener('change', function () {
+        CATCHMENT_FIELDS[+this.dataset.ci].vis = this.checked;
+        if (currentSawalkFeature && document.getElementById('cp')?.classList.contains('in')) {
+          populateCatchmentPanel(currentSawalkFeature);
+        }
+      });
+    });
+    document.getElementById('cp-col-toggle')?.addEventListener('click', () => {
+      if (cpCols) cpCols.hidden = !cpCols.hidden;
+    });
+  }
+
+  /* ── Scale bar + zoom HUD ──────────────────────────── */
+  function niceScaleMeters(m) {
+    /* Return the nearest "round" distance at or above m */
+    const steps = [1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000];
+    return steps.find(s => s >= m * 0.7) || steps[steps.length - 1];
+  }
+
+  function updateHUD() {
+    const lat  = map.getCenter().lat;
+    const z    = map.getZoom();
+    /* Metres per pixel at current zoom and latitude */
+    const mpp  = (156543.03392 * Math.cos(lat * Math.PI / 180)) / Math.pow(2, z);
+    const targetPx = 72; /* target bar pixel width */
+    const rawM     = mpp * targetPx;
+    const niceM    = niceScaleMeters(rawM);
+    const barPx    = Math.round(niceM / mpp);
+    const lbl      = niceM >= 1000
+      ? (niceM / 1000).toFixed(1).replace(/\.0$/, '') + ' km'
+      : Math.round(niceM) + ' m';
+
+    const lineEl = document.getElementById('scalebar-line');
+    const lblEl  = document.getElementById('scalebar-lbl');
+    const zoomEl = document.getElementById('zoom-disp');
+    if (lineEl) lineEl.style.width = barPx + 'px';
+    if (lblEl)  lblEl.textContent  = lbl;
+    if (zoomEl) zoomEl.textContent = 'Z ' + z.toFixed(1);
+  }
+
+  function wireMapInteractions() {
+    const coordEl = document.getElementById('coords');
+
+    /* Zoom-out → return to home when way beyond NCR scale;
+       also auto-deselect any chosen city when zooming out past NCR overview level */
+    map.on('zoom', () => {
+      const z = map.getZoom();
+      if (inMapMode && z < RETREAT_ZOOM) returnToHome();
+
+      /* Auto-deselect city when user zooms out to NCR overview */
+      if (inMapMode && z < NCR_ZOOM) {
+        let stateChanged = false;
+        if (selectedId !== null) {
+          map.setFeatureState({ source: 'cities', id: selectedId }, { selected: false });
+          selectedId = null;
+          stateChanged = true;
+        }
+        if (selectedDropdownCityId !== null) {
+          map.setFeatureState({ source: 'cities', id: selectedDropdownCityId }, { selected: false });
+          selectedDropdownCityId = null;
+          stateChanged = true;
+        }
+        if (selectedCityName !== null) {
+          selectedCityName = null;
+          const fselEl = document.getElementById('fsel');
+          if (fselEl) fselEl.value = '';
+          stateChanged = true;
+        }
+        if (stateChanged) applyLayerFilter(); /* restore "show all" filter */
+      }
+    });
+
+    /* Coordinate tracker */
+    map.on('mousemove', e => {
+      const { lng, lat } = e.lngLat;
+      const la = Math.abs(lat).toFixed(5);
+      const lo = Math.abs(lng).toFixed(5);
+      if (coordEl) coordEl.textContent = `${la}°${lat >= 0 ? 'N' : 'S'}, ${lo}°${lng >= 0 ? 'E' : 'W'}`;
+    });
+
+    /* Scale bar + zoom — update on every camera move */
+    map.on('move', updateHUD);
+    map.on('zoom', updateHUD);
+    /* Reproject catchment label as map pans/zooms */
+    map.on('move', () => {
+      if (_catchLabelCoord) _positionCatchLabel(_catchLabelCoord);
+      if (_selectedSchoolCoord) _showSchoolSelLabel();
+    });
+    /* Initial render once tiles are loaded */
+    map.once('idle', updateHUD);
+
+    /* Hover — feature-state on all interactive layers.
+       Priority rule: cities-fill yields to schools102b-fill and sawalk-fill.
+       When schools or sawalk is under the cursor, skip the city hover update
+       so school/sawalk hover wins uncontested. */
+    const HIGH_PRIORITY_LAYERS = ['schools102b-fill', 'sawalk-fill'];
+
+    INTERACTIVE_LAYERS.forEach(({ layerId, source }) => {
+      map.on('mousemove', layerId, e => {
+        /* Cities yield to higher-priority layers */
+        if (layerId === 'cities-fill') {
+          const above = map.queryRenderedFeatures(e.point, {
+            layers: HIGH_PRIORITY_LAYERS.filter(id =>
+              map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none'
+            )
+          });
+          if (above.length > 0) {
+            /* Clear any stale city hover that might linger */
+            if (hoveredSrc === 'cities' && hoveredId !== null) {
+              map.setFeatureState({ source: 'cities', id: hoveredId }, { hover: false });
+              hoveredId = null; hoveredSrc = null;
+            }
+            return; /* let the school/sawalk handler take over */
+          }
+        }
+        map.getCanvas().style.cursor = 'pointer';
+        const fid = e.features[0].id;
+        if (hoveredId !== null && hoveredSrc) {
+          map.setFeatureState({ source: hoveredSrc, id: hoveredId }, { hover: false });
+        }
+        hoveredId  = fid;
+        hoveredSrc = source;
+        map.setFeatureState({ source, id: fid }, { hover: true });
+      });
+      map.on('mouseleave', layerId, () => {
+        map.getCanvas().style.cursor = '';
+        if (hoveredId !== null && hoveredSrc) {
+          map.setFeatureState({ source: hoveredSrc, id: hoveredId }, { hover: false });
+        }
+        hoveredId  = null;
+        hoveredSrc = null;
+      });
+    });
+
+    /* Click → right panel + feature selection highlight */
+    INTERACTIVE_LAYERS.forEach(({ layerId, source, label }) => {
+      map.on('click', layerId, e => {
+        const feat = e.features[0];
+
+        /* Clear previous map-click selection */
+        if (selectedId !== null) {
+          map.setFeatureState({ source: 'cities', id: selectedId }, { selected: false });
+          selectedId = null;
+        }
+        /* Clear dropdown city selection when user clicks directly on the map */
+        if (selectedDropdownCityId !== null) {
+          map.setFeatureState({ source: 'cities', id: selectedDropdownCityId }, { selected: false });
+          selectedDropdownCityId = null;
+          selectedCityName = null;
+          const fselEl = document.getElementById('fsel');
+          if (fselEl) fselEl.value = '';
+          applyLayerFilter();
+        }
+
+        /* Highlight clicked city polygon */
+        if (source === 'cities') {
+          selectedId = feat.id;
+          map.setFeatureState({ source, id: feat.id }, { selected: true });
+        }
+
+        /* Fly to centroid */
+        const centroid = turf.centroid(feat).geometry.coordinates;
+        map.flyTo({ center: centroid, zoom: Math.max(map.getZoom(), 13),
+                    duration: 700, essential: true });
+
+        populateRightPanel(feat.properties, label);
+
+        /* Populate catchment panel when a school polygon is clicked */
+        if (source === 'schools102b') {
+          /* Show persistent name label at polygon centroid */
+          _selectedSchoolName  = (feat.properties.name || feat.properties['00SchoolName'] || '').trim();
+          _selectedSchoolCoord = centroid;
+          _showSchoolSelLabel();
+          document.getElementById('school-deselect-btn')?.classList.add('vis');
+
+          const fid = String(feat.properties.fid);
+          const sf = sawalkByFid[fid];
+          currentSawalkFeature = sf || null;
+          if (sf) { populateCatchmentPanel(sf); }
+          else    { closeCatchmentPanel(); }
+        } else {
+          closeCatchmentPanel();
+        }
+      });
+    });
+
+    /* ── Underserved Areas hover + click (popundersrv-fill) ─────────────── */
+    map.on('mousemove', 'popundersrv-fill', e => {
+      if (!inMapMode) return;
+      const fid = e.features[0].id;
+      if (hoveredUndersrvId !== null && hoveredUndersrvId !== fid) {
+        try { map.setFeatureState({ source: 'popundersrv', id: hoveredUndersrvId }, { hover: false }); } catch (_) {}
+      }
+      hoveredUndersrvId = fid;
+      map.setFeatureState({ source: 'popundersrv', id: fid }, { hover: true });
+      map.getCanvas().style.cursor = 'pointer';
+      /* Popout matching Barangays (NCR) shape by Bgy_Code — borders only */
+      const uBgyCode = e.features[0].properties && e.features[0].properties.Bgy_Code;
+      if (uBgyCode && window._mbByBgyCode) {
+        const mbFeat = window._mbByBgyCode[uBgyCode];
+        const hlSrc  = map.getSource('bgy-ncr-hl');
+        if (hlSrc) hlSrc.setData({ type: 'FeatureCollection', features: mbFeat ? [mbFeat] : [] });
+      }
+    });
+
+    map.on('mouseleave', 'popundersrv-fill', () => {
+      if (hoveredUndersrvId !== null) {
+        try { map.setFeatureState({ source: 'popundersrv', id: hoveredUndersrvId }, { hover: false }); } catch (_) {}
+        hoveredUndersrvId = null;
+      }
+      map.getCanvas().style.cursor = '';
+      /* Restore selected NCR highlight (if toggle is on) or clear */
+      const ncrTog = document.getElementById('bgy-ncr-toggle');
+      if (ncrTog && ncrTog.checked && _currentBgyNcrCode && window._mbByBgyCode) {
+        const mbFeat = window._mbByBgyCode[_currentBgyNcrCode];
+        const hlSrc  = map.getSource('bgy-ncr-hl');
+        if (hlSrc) hlSrc.setData({ type: 'FeatureCollection', features: mbFeat ? [mbFeat] : [] });
+      } else {
+        clearBgyNcrHighlight();
+      }
+    });
+
+    map.on('click', 'popundersrv-fill', e => {
+      if (!inMapMode) return;
+      const feat  = e.features[0];
+      const props = feat.properties;
+      const label = [props.Bgy_Name || '', props.Mun_City || ''].filter(Boolean).join(' · ') || 'Barangay';
+      /* Clear previous selection */
+      if (selectedUndersrvId !== null && selectedUndersrvId !== feat.id) {
+        try { map.setFeatureState({ source: 'popundersrv', id: selectedUndersrvId }, { selected: false }); } catch (_) {}
+      }
+      selectedUndersrvId = feat.id;
+      map.setFeatureState({ source: 'popundersrv', id: feat.id }, { selected: true });
+      populateUnderservedPanel(props, label);
+      showBgyNcrPanel(props.Bgy_Code, props.Bgy_Name);
+      closeCatchmentPanel();
+      try {
+        const centroid = turf.centroid(feat).geometry.coordinates;
+        map.flyTo({ center: centroid, zoom: Math.max(map.getZoom(), 13), duration: 700, essential: true });
+      } catch (_) {}
+      e.originalEvent._undersrvHandled = true;
+    });
+
+    /* Click on empty space — clear all panels and catchment lock.
+       Include bgycatch layers in the hit test so clicks on those polygons
+       don't close the right panel that the bgycatch click handler just opened. */
+    map.on('click', e => {
+      if (e.originalEvent._bgyCatchHandled || e.originalEvent._undersrvHandled) return;
+      const allClickable = [
+        ...INTERACTIVE_LAYERS.map(l => l.layerId),
+        'bgy-catch-fill', 'bgy-catch-density-fill', 'bgy-den-undersrv-fill', 'popundersrv-fill'
+      ].filter(id => { try { return !!map.getLayer(id); } catch (_) { return false; } });
+      const hit = map.queryRenderedFeatures(e.point, { layers: allClickable });
+      if (!hit.length) {
+        if (selectedId !== null) {
+          map.setFeatureState({ source: 'cities', id: selectedId }, { selected: false });
+          selectedId = null;
+        }
+        if (selectedUndersrvId !== null) {
+          try { map.setFeatureState({ source: 'popundersrv', id: selectedUndersrvId }, { selected: false }); } catch (_) {}
+          selectedUndersrvId = null;
+        }
+        lockedCatchmentFid = null;
+        clearCatchmentHighlight();
+        closeRightPanel();
+        closeCatchmentPanel();
+      }
+    });
+
+    /* ── School → on-demand catchment highlight ──────── */
+    /* Build fid lookup for fast O(1) matching */
+    const sawalkByFid = {};
+    json_SAWalk_0.features.forEach(f => {
+      if (f.properties.fid != null) sawalkByFid[String(f.properties.fid)] = f;
+    });
+
+    /* lockedCatchmentFid and clearCatchmentHighlight are module-level */
+
+    function isCatchmentLayerHidden() {
+      try { return map.getLayoutProperty('sawalk-fill', 'visibility') === 'none'; }
+      catch (e) { return true; }
+    }
+
+    function showCatchmentFor(fid) {
+      const match = sawalkByFid[String(fid)];
+      if (!match) return;
+      map.getSource('sawalk-highlight').setData({ type: 'FeatureCollection', features: [match] });
+      /* Set two-line catch-label: school name + "15-minute walking catchment" tag */
+      const schoolName = (match.properties['School Name'] || '').trim();
+      const labelEl = document.getElementById('catch-label');
+      if (labelEl) {
+        labelEl.innerHTML =
+          (schoolName ? `<span class="clbl-school">${schoolName}</span>` : '') +
+          `<span class="clbl-tag">15-minute walking catchment</span>`;
+      }
+      /* Position label halfway between centroid and polygon's north edge */
+      try {
+        const centroid = turf.centroid(match);
+        const cLng = centroid.geometry.coordinates[0];
+        const cLat = centroid.geometry.coordinates[1];
+        const bbox  = turf.bbox(match); /* [minLng, minLat, maxLng, maxLat] */
+        const midLat = (cLat + bbox[3]) / 2;
+        const coord = [cLng, midLat];
+        _catchLabelCoord = coord;
+        _positionCatchLabel(coord);
+      } catch (_) { /* turf unavailable — skip label */ }
+    }
+
+    /* Hover over school → temporarily show its catchment */
+    map.on('mousemove', 'schools102b-fill', e => {
+      if (!isCatchmentLayerHidden()) return;
+      if (lockedCatchmentFid !== null) return; /* don't override locked */
+      showCatchmentFor(e.features[0].properties.fid);
+    });
+
+    map.on('mouseleave', 'schools102b-fill', () => {
+      if (lockedCatchmentFid === null) clearCatchmentHighlight();
+    });
+
+    /* Click on school → toggle-lock its catchment */
+    map.on('click', 'schools102b-fill', e => {
+      if (!isCatchmentLayerHidden()) return;
+      const fid = String(e.features[0].properties.fid);
+      if (lockedCatchmentFid === fid) {
+        lockedCatchmentFid = null;
+        clearCatchmentHighlight();
+      } else {
+        lockedCatchmentFid = fid;
+        showCatchmentFor(fid);
+      }
+    });
+
+    /* When sawalk layer is toggled ON — clear any lock */
+    const sawalkChk = document.getElementById('lp-sawalk');
+    if (sawalkChk) {
+      sawalkChk.addEventListener('change', function () {
+        if (this.checked) {
+          lockedCatchmentFid = null;
+          clearCatchmentHighlight();
+        }
+      });
+    }
+
+    /* ── NCR Barangay hover (barangays-ncr-fill) ──────── */
+    /* Feature-state hover fires always; tooltip appears only at zoom ≥ 13.5
+       (handled in wireHoverTooltip via HOVER_MIN_ZOOM).
+       This handler manages the feature-state and cursor only. */
+    map.on('mousemove', 'barangays-ncr-fill', e => {
+      if (!inMapMode) return;
+      const fid = e.features[0].id;
+      if (hoveredBgyId !== null && hoveredBgyId !== fid) {
+        map.setFeatureState({ source: 'bgy-borders', id: hoveredBgyId }, { hover: false });
+      }
+      hoveredBgyId = fid;
+      map.setFeatureState({ source: 'bgy-borders', id: fid }, { hover: true });
+      map.getCanvas().style.cursor = 'default';
+    });
+
+    map.on('mouseleave', 'barangays-ncr-fill', () => {
+      if (hoveredBgyId !== null) {
+        try {
+          map.setFeatureState({ source: 'bgy-borders', id: hoveredBgyId }, { hover: false });
+        } catch (_) {}
+        hoveredBgyId = null;
+      }
+      map.getCanvas().style.cursor = '';
+    });
+
+    /* ── Catchment barangay hover + click (bgy-catch-fill / bgy-catch-density-fill / bgy-den-undersrv-fill) ─── */
+    ['bgy-catch-fill', 'bgy-catch-density-fill', 'bgy-den-undersrv-fill'].forEach(lyrId => {
+      map.on('mousemove', lyrId, e => {
+        if (!inMapMode) return;
+        const fid = e.features[0].id;
+        if (hoveredBgyCatchId !== null && hoveredBgyCatchId !== fid) {
+          map.setFeatureState({ source: 'bgycatch', id: hoveredBgyCatchId }, { hover: false });
+        }
+        hoveredBgyCatchId = fid;
+        map.setFeatureState({ source: 'bgycatch', id: fid }, { hover: true });
+        map.getCanvas().style.cursor = 'pointer';
+        /* Popout matching Barangays (NCR) shape by Bgy_Code — borders only */
+        const bgyCode = e.features[0].properties && e.features[0].properties.Bgy_Code;
+        if (bgyCode && window._mbByBgyCode) {
+          const mbFeat = window._mbByBgyCode[bgyCode];
+          const hlSrc  = map.getSource('bgy-ncr-hl');
+          if (hlSrc) hlSrc.setData({ type: 'FeatureCollection', features: mbFeat ? [mbFeat] : [] });
+        }
+      });
+
+      map.on('mouseleave', lyrId, () => {
+        if (hoveredBgyCatchId !== null) {
+          try { map.setFeatureState({ source: 'bgycatch', id: hoveredBgyCatchId }, { hover: false }); } catch (_) {}
+          hoveredBgyCatchId = null;
+        }
+        map.getCanvas().style.cursor = '';
+        /* Restore selected NCR highlight (if toggle is on) or clear */
+        const ncrTog = document.getElementById('bgy-ncr-toggle');
+        if (ncrTog && ncrTog.checked && _currentBgyNcrCode && window._mbByBgyCode) {
+          const mbFeat = window._mbByBgyCode[_currentBgyNcrCode];
+          const hlSrc  = map.getSource('bgy-ncr-hl');
+          if (hlSrc) hlSrc.setData({ type: 'FeatureCollection', features: mbFeat ? [mbFeat] : [] });
+        } else {
+          clearBgyNcrHighlight();
+        }
+      });
+
+      map.on('click', lyrId, e => {
+        if (!inMapMode) return;
+        const feat   = e.features[0];
+        const props  = feat.properties;
+        const bgyName = props.Bgy_Name || '';
+        const munCity = props.Mun_City || '';
+        const label   = [bgyName, munCity].filter(Boolean).join(' · ') || 'Barangay';
+        /* Manage selected state — clear previous, set new */
+        if (selectedBgyCatchId !== null && selectedBgyCatchId !== feat.id) {
+          try { map.setFeatureState({ source: 'bgycatch', id: selectedBgyCatchId }, { selected: false }); } catch (_) {}
+        }
+        selectedBgyCatchId = feat.id;
+        map.setFeatureState({ source: 'bgycatch', id: feat.id }, { selected: true });
+        populateBgyCatchPanel(props, label);
+        showBgyNcrPanel(props.Bgy_Code, props.Bgy_Name);
+        closeCatchmentPanel();
+        /* Fly to feature centroid */
+        try {
+          const centroid = turf.centroid(feat).geometry.coordinates;
+          map.flyTo({ center: centroid, zoom: Math.max(map.getZoom(), 13),
+                      duration: 700, essential: true });
+        } catch (_) {}
+        e.originalEvent._bgyCatchHandled = true; /* flag so empty-click handler ignores */
+      });
+    });
+  }
+
+  /* ── Hover tooltip (analysis layers only) ─────────── */
+  function wireHoverTooltip() {
+    const tip = document.getElementById('hover-tip');
+    const TIP_OFFSET = 14; /* px from cursor */
+
+    function showTip(e, layerId, props) {
+      const fields = HOVER_FIELDS[layerId];
+      if (!fields) return;
+      /* Honour per-layer minimum zoom gate */
+      const minZ = HOVER_MIN_ZOOM[layerId];
+      if (minZ !== undefined && map.getZoom() < minZ) { hideTip(); return; }
+
+      /* Resolve value — honour optional fallback key when primary is null/empty */
+      function resolveVal(entry) {
+        const v = props[entry.key];
+        if (v !== null && v !== undefined && v !== '') return v;
+        if (entry.fallback) {
+          const fb = props[entry.fallback];
+          if (fb !== null && fb !== undefined && fb !== '') return fb;
+        }
+        return null;
+      }
+
+      /* Build rows — skip entries where both primary and fallback are empty */
+      const filtered = fields.map(f => ({ ...f, resolved: resolveVal(f) }))
+        .filter(f => f.resolved !== null);
+
+      if (!filtered.length) return;
+
+      let html;
+      if (HOVER_STACKED_STYLE.has(layerId)) {
+        /* Stacked layout: label (grey, small) over value (bold, larger) */
+        html = filtered.map(({ label, resolved }) => {
+          const val = (typeof resolved === 'number') ? +resolved.toFixed(2) : resolved;
+          return `<div class="ht-field">
+            <span class="ht-lbl">${label}</span>
+            <span class="ht-name">${val}</span>
+          </div>`;
+        }).join('');
+      } else {
+        /* Original side-by-side layout */
+        html = filtered.map(({ label, resolved }) => {
+          const val = (typeof resolved === 'number') ? +resolved.toFixed(2) : resolved;
+          return `<div class="ht-row">
+            <span class="ht-key">${label}</span>
+            <span class="ht-val">${val}</span>
+          </div>`;
+        }).join('');
+      }
+
+      const hintCfg = HOVER_HINT_CONFIG[layerId];
+      const dotHtml  = hintCfg
+        ? `<span class="ht-dot" style="background:${hintCfg.color}"></span>`
+        : '';
+      const hintHtml = HOVER_CLICK_HINT.has(layerId)
+        ? `<div class="ht-hint"${hintCfg ? ` style="color:${hintCfg.color};border-top-color:${hintCfg.color}22"` : ''}>Click to view statistics</div>`
+        : '';
+      const catchmentHtml = SCHOOL_CATCHMENT_HINT.has(layerId)
+        ? `<div class="ht-hint">15-minute Walking Catchment</div>`
+        : '';
+      tip.innerHTML = dotHtml + html + hintHtml + catchmentHtml;
+
+      /* Position near cursor (fixed), avoid right/bottom edge overflow */
+      const mx = e.originalEvent.clientX;
+      const my = e.originalEvent.clientY;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      tip.style.left = '';
+      tip.style.right = '';
+      tip.style.top = '';
+      tip.style.bottom = '';
+
+      const tipW = 260, tipH = 180; /* rough max dimensions */
+      if (mx + TIP_OFFSET + tipW > vw) {
+        tip.style.right = (vw - mx + TIP_OFFSET) + 'px';
+      } else {
+        tip.style.left = (mx + TIP_OFFSET) + 'px';
+      }
+      if (my + TIP_OFFSET + tipH > vh) {
+        tip.style.bottom = (vh - my + TIP_OFFSET) + 'px';
+      } else {
+        tip.style.top = (my + TIP_OFFSET) + 'px';
+      }
+
+      tip.classList.add('vis');
+      tip.setAttribute('aria-hidden', 'false');
+    }
+
+    function hideTip() {
+      tip.classList.remove('vis');
+      tip.setAttribute('aria-hidden', 'true');
+    }
+
+    Object.keys(HOVER_FIELDS).forEach(layerId => {
+      map.on('mousemove', layerId, e => {
+        if (e.features && e.features.length) {
+          showTip(e, layerId, e.features[0].properties);
+        }
+      });
+      map.on('mouseleave', layerId, hideTip);
+    });
+
+    /* Also hide tip when leaving map canvas */
+    map.getCanvas().addEventListener('mouseleave', hideTip);
+  }
+
+  /* ── Barangay view toggles (radio-style mutual exclusion) ─── */
+  function wireBgyMode() {
+    const defChk = document.getElementById('bgy-view-default');
+    const denChk = document.getElementById('bgy-view-density');
+
+    if (defChk) {
+      defChk.addEventListener('change', function () {
+        if (this.checked && denChk) denChk.checked = false; /* mutual exclusion */
+        applyBgyVisibility();
+      });
+    }
+    if (denChk) {
+      denChk.addEventListener('change', function () {
+        if (this.checked && defChk) defChk.checked = false; /* mutual exclusion */
+        applyBgyVisibility();
+      });
+    }
+  }
+
+  /* ── Search bar — Barangay + School modes (Walking Catchments & Underserved views) ── */
+  function wireBgySearch() {
+    const input    = document.getElementById('bgy-search-input');
+    const ac       = document.getElementById('bgy-autocomplete');
+    const clearBtn = document.getElementById('bgy-clear-btn');
+    const modeSel  = document.getElementById('bgy-search-mode');
+    if (!input || !ac) return;
+
+    /* ── Search indices ──────────────────────────────── */
+    const bgyIndex = (json_Baramgays_inSAWalk_1.features || []).map(f => ({
+      name:    (f.properties.Bgy_Name  || '').trim(),
+      sub:     (f.properties.Mun_Name  || '').trim(),
+      feature: f
+    })).filter(b => b.name);
+
+    const schoolIndex = (json_01SchoolsFuzzyAll102Bcopy_1.features || []).map(f => ({
+      name:    (f.properties['name'] || f.properties['00SchoolName'] || '').trim(),
+      sub:     (f.properties.Mun_Name || '').trim(),
+      feature: f
+    })).filter(s => s.name);
+
+    let acItems    = [];
+    let focusedIdx = -1;
+
+    function getMode() { return modeSel ? modeSel.value : 'barangay'; }
+
+    /* ── Placeholder ─────────────────────────────────── */
+    function updatePlaceholder() {
+      input.placeholder = getMode() === 'school' ? 'Search school name…' : 'Search barangay…';
+    }
+
+    /* ── Autocomplete rendering ──────────────────────── */
+    function renderAC(matches) {
+      acItems    = matches;
+      focusedIdx = -1;
+      if (!matches.length) { ac.classList.remove('open'); return; }
+      ac.innerHTML = matches.map((m, i) =>
+        `<div class="bgy-ac-item" data-i="${i}" role="option">
+          <div class="bgy-ac-name">${m.name}</div>
+          <div class="bgy-ac-mun">${m.sub}</div>
+        </div>`
+      ).join('');
+      ac.classList.add('open');
+      ac.querySelectorAll('.bgy-ac-item').forEach((el, i) => {
+        el.addEventListener('mousedown', ev => {
+          ev.preventDefault();
+          if (getMode() === 'school') selectSchool(acItems[i]);
+          else                        selectBgy(acItems[i]);
+        });
+      });
+    }
+
+    function setFocus(idx) {
+      ac.querySelectorAll('.bgy-ac-item')
+        .forEach((el, i) => el.classList.toggle('focused', i === idx));
+      focusedIdx = idx;
+    }
+
+    /* ── Selection handlers ──────────────────────────── */
+    function selectBgy(item) {
+      input.value = item.name;
+      ac.classList.remove('open');
+      if (clearBtn) clearBtn.classList.add('vis');
+      const hlSrc = map.getSource('bgy-highlight');
+      if (hlSrc) hlSrc.setData({ type: 'FeatureCollection', features: [item.feature] });
+      try {
+        const bbox = turf.bbox(item.feature);
+        map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+          { padding: 80, duration: 900, essential: true });
+      } catch (_) {}
+    }
+
+    function selectSchool(item) {
+      input.value = item.name;
+      ac.classList.remove('open');
+      if (clearBtn) clearBtn.classList.add('vis');
+      /* Highlight school polygon via school-highlight source */
+      const hlSrc = map.getSource('school-highlight');
+      if (hlSrc) hlSrc.setData({ type: 'FeatureCollection', features: [item.feature] });
+      try {
+        const bbox = turf.bbox(item.feature);
+        map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+          { padding: 120, maxZoom: 17, duration: 900, essential: true });
+      } catch (_) {}
+    }
+
+    function clearSearch() {
+      input.value = '';
+      ac.classList.remove('open');
+      if (clearBtn) clearBtn.classList.remove('vis');
+      /* Clear both highlight sources so nothing lingers */
+      const bhl = map.getSource('bgy-highlight');
+      if (bhl) bhl.setData({ type: 'FeatureCollection', features: [] });
+      const shl = map.getSource('school-highlight');
+      if (shl) shl.setData({ type: 'FeatureCollection', features: [] });
+    }
+
+    /* ── Events ──────────────────────────────────────── */
+    if (modeSel) {
+      modeSel.addEventListener('change', () => {
+        clearSearch();
+        updatePlaceholder();
+      });
+    }
+
+    input.addEventListener('input', function () {
+      const q = this.value.trim().toUpperCase();
+      if (clearBtn) clearBtn.classList.toggle('vis', this.value.length > 0);
+      if (!q) { ac.classList.remove('open'); return; }
+      const idx     = getMode() === 'school' ? schoolIndex : bgyIndex;
+      const matches = idx.filter(m => m.name.toUpperCase().includes(q)).slice(0, 12);
+      renderAC(matches);
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFocus(Math.min(focusedIdx + 1, acItems.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFocus(Math.max(focusedIdx - 1, 0));
+      } else if (e.key === 'Enter') {
+        if (focusedIdx >= 0 && acItems[focusedIdx]) {
+          if (getMode() === 'school') selectSchool(acItems[focusedIdx]);
+          else                        selectBgy(acItems[focusedIdx]);
+        }
+      } else if (e.key === 'Escape') {
+        ac.classList.remove('open');
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      setTimeout(() => ac.classList.remove('open'), 160);
+    });
+
+    if (clearBtn) clearBtn.addEventListener('click', clearSearch);
+  }
+
+  /* ── School search bar (visible in Schools view) ─────────────────── */
+  function wireSchoolSearch() {
+    const input    = document.getElementById('school-search-input');
+    const ac       = document.getElementById('school-autocomplete');
+    const clearBtn = document.getElementById('school-clear-btn');
+    if (!input || !ac) return;
+
+    /* Build search index from school polygons dataset */
+    const schoolIndex = (json_01SchoolsFuzzyAll102Bcopy_1.features || []).map(f => ({
+      name:    (f.properties['name'] || f.properties['00SchoolName'] || '').trim(),
+      mun:     (f.properties.Mun_Name || '').trim(),
+      feature: f
+    })).filter(s => s.name);
+
+    let acItems    = [];
+    let focusedIdx = -1;
+
+    function renderAC(matches) {
+      acItems    = matches;
+      focusedIdx = -1;
+      if (!matches.length) { ac.classList.remove('open'); return; }
+      ac.innerHTML = matches.map((m, i) =>
+        `<div class="sch-ac-item" data-i="${i}" role="option">
+          <div class="sch-ac-name">${m.name}</div>
+          <div class="sch-ac-sub">${m.mun}</div>
+        </div>`
+      ).join('');
+      ac.classList.add('open');
+      ac.querySelectorAll('.sch-ac-item').forEach((el, i) => {
+        el.addEventListener('mousedown', ev => {
+          ev.preventDefault();
+          selectSchool(acItems[i]);
+        });
+      });
+    }
+
+    function setFocus(idx) {
+      ac.querySelectorAll('.sch-ac-item')
+        .forEach((el, i) => el.classList.toggle('focused', i === idx));
+      focusedIdx = idx;
+    }
+
+    function selectSchool(item) {
+      input.value = item.name;
+      ac.classList.remove('open');
+      if (clearBtn) clearBtn.classList.add('vis');
+      /* Highlight the school polygon */
+      const hlSrc = map.getSource('school-highlight');
+      if (hlSrc) hlSrc.setData({ type: 'FeatureCollection', features: [item.feature] });
+      /* Zoom to school bounds */
+      try {
+        const bbox = turf.bbox(item.feature);
+        map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+          { padding: 120, maxZoom: 17, duration: 900, essential: true });
+      } catch (_) {}
+    }
+
+    function clearSearch() {
+      input.value = '';
+      ac.classList.remove('open');
+      if (clearBtn) clearBtn.classList.remove('vis');
+      const hlSrc = map.getSource('school-highlight');
+      if (hlSrc) hlSrc.setData({ type: 'FeatureCollection', features: [] });
+    }
+
+    input.addEventListener('input', function () {
+      const q = this.value.trim().toUpperCase();
+      if (clearBtn) clearBtn.classList.toggle('vis', this.value.length > 0);
+      if (!q) { ac.classList.remove('open'); return; }
+      const matches = schoolIndex
+        .filter(s => s.name.toUpperCase().includes(q))
+        .slice(0, 12);
+      renderAC(matches);
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFocus(Math.min(focusedIdx + 1, acItems.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFocus(Math.max(focusedIdx - 1, 0));
+      } else if (e.key === 'Enter') {
+        if (focusedIdx >= 0 && acItems[focusedIdx]) selectSchool(acItems[focusedIdx]);
+      } else if (e.key === 'Escape') {
+        ac.classList.remove('open');
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      setTimeout(() => ac.classList.remove('open'), 160);
+    });
+
+    if (clearBtn) clearBtn.addEventListener('click', clearSearch);
+  }
+
+  /* ── School name HTML label overlay ─────────────────────────────────── */
+  function wireSchoolLabels() {
+    /* Pre-compute centroids once from the raw GeoJSON so reprojection is fast.
+       schools102b source uses generateId:true → feature.id === array index. */
+    const _lookup = {}; /* idx → {name, coords:[lng,lat]} */
+    (json_01SchoolsFuzzyAll102Bcopy_1.features || []).forEach((f, idx) => {
+      const name = (f.properties['name'] || f.properties['00SchoolName'] || '').trim();
+      if (!name) return;
+      try {
+        const c = turf.centroid(f);
+        _lookup[idx] = { name, coords: c.geometry.coordinates };
+      } catch (_) {}
+    });
+
+    let _slabEls = []; /* [{el, coords}] — cached spans, rebuilt on moveend/zoomend */
+
+    function _opacity(z) {
+      if (z < 15.0) return 0;
+      if (z < 15.2) return ((z - 15.0) / 0.2) * 0.25;
+      if (z < 15.5) return 0.25 + ((z - 15.2) / 0.3) * 0.55;
+      return 0.80;
+    }
+
+    function _schoolsVisible() {
+      try { return map.getLayoutProperty('schools102b-fill', 'visibility') !== 'none'; }
+      catch (_) { return false; }
+    }
+
+    /* Rebuild: query currently visible school features → create/cache label spans */
+    function rebuildSchoolLabels() {
+      const container = document.getElementById('school-labels-container');
+      if (!container) return;
+      container.innerHTML = '';
+      _slabEls = [];
+      if (!_schoolsVisible() || !map.getLayer('schools102b-fill')) return;
+
+      const feats = map.queryRenderedFeatures(undefined, { layers: ['schools102b-fill'] });
+      const seen  = new Set();
+      const frag  = document.createDocumentFragment();
+      feats.forEach(f => {
+        const idx = f.id; /* integer from generateId */
+        if (seen.has(idx)) return;
+        seen.add(idx);
+        const entry = _lookup[idx];
+        if (!entry) return;
+        const el = document.createElement('span');
+        el.className = 'school-lbl';
+        el.textContent = entry.name;
+        _slabEls.push({ el, coords: entry.coords });
+        frag.appendChild(el);
+      });
+      container.appendChild(frag);
+      projectSchoolLabels();
+    }
+
+    /* Project: fast reposition of cached spans each frame during pan/zoom */
+    function projectSchoolLabels() {
+      const z  = map.getZoom();
+      const op = _opacity(z);
+      const vis = _schoolsVisible();
+      _slabEls.forEach(({ el, coords }) => {
+        if (!vis || op === 0) { el.style.opacity = '0'; return; }
+        const pt = map.project(coords);
+        el.style.left    = pt.x + 'px';
+        el.style.top     = pt.y + 'px';
+        el.style.opacity = String(op);
+      });
+    }
+
+    /* Expose project for applyView() to call when switching back to schools */
+    window._rebuildSchoolLabels = rebuildSchoolLabels;
+    window._projectSchoolLabels = projectSchoolLabels;
+
+    /* Rebuild after map settles (new tiles = new visible features) */
+    map.on('moveend', rebuildSchoolLabels);
+    map.on('zoomend', rebuildSchoolLabels);
+    /* Fast reproject each frame during movement */
+    map.on('move', projectSchoolLabels);
+    map.on('zoom', projectSchoolLabels);
+    /* Initial render once map is idle */
+    map.once('idle', rebuildSchoolLabels);
+  }
+
+  /* ── Right panel ─────────────────────────────────── */
+  const rpEmpty = document.getElementById('rp-empty');
+  const rpBody  = document.getElementById('rp-body');
+
+  function populateRightPanel(props, layerLabel) {
+    const SKIP = new Set(['fid', 'geometry', 'layer', 'Layer']);
+    const rows = Object.entries(props)
+      .filter(([k]) => !SKIP.has(k) && props[k] !== null && props[k] !== '')
+      .map(([k, v]) => `<div class="prop-row">
+          <span class="prop-key">${k}</span>
+          <span class="prop-val">${v}</span>
+        </div>`)
+      .join('');
+    rpBody.innerHTML = `<div class="prop-layer">${layerLabel}</div>${rows}`;
+    rpBody.classList.add('on');
+    rpEmpty.style.display = 'none';
+  }
+
+  function populateBgyCatchPanel(props, label) {
+    const fmt  = v => (v !== null && v !== undefined && v !== '') ? Number(v).toLocaleString() : '—';
+    const fmtM = v => (v !== null && v !== undefined && v !== '') ? Number(v).toLocaleString() + ' sq. m.' : '—';
+    const row  = (key, val) =>
+      `<div class="prop-row prop-sub">
+        <span class="prop-key">${key}</span>
+        <span class="prop-val">${val}</span>
+      </div>`;
+    const grp  = title => `<div class="prop-group">${title}</div>`;
+
+    /* Inline bar row — shows value + yellow/grey progress bar + % label */
+    const rowBar = (key, catchVal, totalVal) => {
+      const c = parseFloat(catchVal);
+      const t = parseFloat(totalVal);
+      const hasData = !isNaN(c) && !isNaN(t) && t > 0;
+      const pct     = hasData ? Math.min(100, Math.round(c / t * 100)) : 0;
+      const numStr  = hasData ? c.toLocaleString() : '—';
+      const pctStr  = hasData ? pct + '%' : '';
+      return `<div class="prop-row prop-sub">
+        <span class="prop-key">${key}</span>
+        <div class="catch-bar-wrap">
+          <span class="catch-bar-num">${numStr}</span>
+          ${hasData ? `<div class="catch-bar"><div class="catch-bar-fill" style="width:${pct}%"></div></div>
+          <span class="catch-bar-pct">${pctStr}</span>` : ''}
+        </div>
+      </div>`;
+    };
+
+    rpBody.innerHTML = `
+      <div class="prop-layer">${label}</div>
+      ${row('Barangay Name',  props.Bgy_Name  || '—')}
+      ${row('City',           props.Mun_City  || '—')}
+      ${row('Land Area',      fmtM(props.BrgyAreaSQM))}
+      ${row('Pop. (2020)',    fmt(props.Total_MF))}
+      ${grp('Total Barangay Student Population')}
+      ${row('Elementary School',  fmt(props.ES_Age))}
+      ${row('Junior High School', fmt(props.JHS_Age))}
+      ${row('Senior High School', fmt(props.SHS_Age))}
+      ${grp('Student Pop. within 15-min Catchment')}
+      ${rowBar('Elementary School',  props.PopES_PopBgyClipped,  props.ES_Age)}
+      ${rowBar('Junior High School', props.PopJHS_PopBgyClipped, props.JHS_Age)}
+      ${rowBar('Senior High School', props.PopSHS_PopBgyClipped, props.SHS_Age)}
+    `;
+    rpBody.classList.add('on');
+    rpEmpty.style.display = 'none';
+  }
+
+  function populateUnderservedPanel(props, label) {
+    const fmt = v => (v !== null && v !== undefined && v !== '') ? Number(v).toLocaleString() : '—';
+    const row = (key, val) =>
+      `<div class="prop-row prop-sub">
+        <span class="prop-key">${key}</span>
+        <span class="prop-val">${val}</span>
+      </div>`;
+    const grp = title => `<div class="prop-group">${title}</div>`;
+
+    /* Bar row — number + yellow/grey progress bar representing % outside walk zone */
+    const rowBar = (key, diffVal, totalVal) => {
+      const d = parseFloat(diffVal);
+      const t = parseFloat(totalVal);
+      const hasData = !isNaN(d) && !isNaN(t) && t > 0;
+      const pct    = hasData ? Math.min(100, Math.round(d / t * 100)) : 0;
+      const numStr = hasData ? d.toLocaleString() : '—';
+      const pctStr = hasData ? pct + '%' : '';
+      return `<div class="prop-row prop-sub">
+        <span class="prop-key">${key}</span>
+        <div class="catch-bar-wrap">
+          <span class="catch-bar-num">${numStr}</span>
+          ${hasData ? `<div class="catch-bar"><div class="catch-bar-fill" style="width:${pct}%;background:#5a0000"></div></div>
+          <span class="catch-bar-pct">${pctStr}</span>` : ''}
+        </div>
+      </div>`;
+    };
+
+    rpBody.innerHTML = `
+      <div class="prop-layer">${label}</div>
+      ${row('Barangay Name', props.Bgy_Name || '—')}
+      ${row('City',          props.Mun_City  || '—')}
+      ${grp('Barangay School-Age Population')}
+      ${row('Elementary School',  fmt(props.ES_Age))}
+      ${row('Junior High School', fmt(props.JHS_Age))}
+      ${row('Senior High School', fmt(props.SHS_Age))}
+      ${grp('Students Outside 15-min Walk Zone')}
+      ${rowBar('Elementary School',  props.PopDiffWalk_Bgy_ES,  props.ES_Age)}
+      ${rowBar('Junior High School', props.PopDiffWalk_Bgy_JHS, props.JHS_Age)}
+      ${rowBar('Senior High School', props.PopDiffWalk_Bgy_SHS, props.SHS_Age)}
+    `;
+    rpBody.classList.add('on');
+    rpEmpty.style.display = 'none';
+  }
+
+  function closeRightPanel() {
+    rpBody.innerHTML = '';
+    rpBody.classList.remove('on');
+    rpEmpty.style.display = '';
+    closeBgyNcrPanel();
+  }
+
+  /* ── Barangay NCR inline toggle (in search bar) ─────── */
+  let _currentBgyNcrCode = null;
+
+  function showBgyNcrPanel(bgyCode, bgyName) {
+    _currentBgyNcrCode = bgyCode || null;
+    /* Auto-check toggle and show NCR outline immediately */
+    const toggle = document.getElementById('bgy-ncr-toggle');
+    if (toggle) toggle.checked = true;
+    const feat = _currentBgyNcrCode && window._mbByBgyCode
+      ? window._mbByBgyCode[_currentBgyNcrCode] : null;
+    const hlSrc = map.getSource('bgy-ncr-hl');
+    if (hlSrc) hlSrc.setData({ type: 'FeatureCollection', features: feat ? [feat] : [] });
+    /* Ensure Barangays (NCR) layer is visible */
+    const mbChk = document.getElementById('lp-mb');
+    if (mbChk && !mbChk.checked) { mbChk.checked = true; setVis(['mb-fill', 'mb-line'], true); }
+  }
+
+  function closeBgyNcrPanel() {
+    const toggle = document.getElementById('bgy-ncr-toggle');
+    if (toggle) toggle.checked = false;
+    clearBgyNcrHighlight();
+    _currentBgyNcrCode = null;
+  }
+
+  function clearBgyNcrHighlight() {
+    const src = map.getSource('bgy-ncr-hl');
+    if (src) src.setData({ type: 'FeatureCollection', features: [] });
+  }
+
+  /* Wire the toggle */
+  document.getElementById('bgy-ncr-toggle')?.addEventListener('change', function () {
+    if (this.checked) {
+      /* Turn on MB layer if not already visible */
+      const mbChk = document.getElementById('lp-mb');
+      if (mbChk && !mbChk.checked) {
+        mbChk.checked = true;
+        setVis(['mb-fill', 'mb-line'], true);
+      }
+      /* Highlight matching barangay by Bgy_Code */
+      const feat = _currentBgyNcrCode && window._mbByBgyCode
+        ? window._mbByBgyCode[_currentBgyNcrCode]
+        : null;
+      const src = map.getSource('bgy-ncr-hl');
+      if (src) src.setData({ type: 'FeatureCollection', features: feat ? [feat] : [] });
+    } else {
+      clearBgyNcrHighlight();
+    }
+  });
+
+  /* ── City / Municipality dropdown ─────────────────── */
+  function populateCityDropdown() {
+    const fsel = document.getElementById('fsel');
+    const feats = (json_CitiesMM_4.features || []).slice()
+      .sort((a, b) =>
+        (a.properties.Mun_Name || a.properties.MuniCity || '')
+          .localeCompare(b.properties.Mun_Name || b.properties.MuniCity || ''));
+
+    feats.forEach((f, i) => {
+      const name = f.properties.Mun_Name || f.properties.MuniCity || `Feature ${i}`;
+      /* Strip "City of " / "CITY OF " prefix for a cleaner display label */
+      const displayName = name.replace(/^city\s+of\s+/i, '').trim();
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = displayName;
+      fsel.appendChild(opt);
+    });
+
+    fsel.addEventListener('change', function () {
+      /* Clear any existing map-click selection */
+      if (selectedId !== null) {
+        map.setFeatureState({ source: 'cities', id: selectedId }, { selected: false });
+        selectedId = null;
+      }
+      /* Clear previous dropdown highlight */
+      if (selectedDropdownCityId !== null) {
+        map.setFeatureState({ source: 'cities', id: selectedDropdownCityId }, { selected: false });
+        selectedDropdownCityId = null;
+      }
+
+      if (!this.value) {
+        selectedCityName = null;
+        applyLayerFilter();
+        return;
+      }
+
+      const feat = feats[parseInt(this.value, 10)];
+      if (!feat) { selectedCityName = null; applyLayerFilter(); return; }
+      selectedCityName = feat.properties.Mun_Name || feat.properties.MuniCity || null;
+
+      /* Highlight the selected city polygon with WTA yellow thick border */
+      const origIdx = json_CitiesMM_4.features.findIndex(f =>
+        (f.properties.Mun_Name || f.properties.MuniCity) === selectedCityName
+      );
+      if (origIdx >= 0) {
+        selectedDropdownCityId = origIdx;
+        map.setFeatureState({ source: 'cities', id: selectedDropdownCityId }, { selected: true });
+      }
+
+      /* Zoom to selected city */
+      const bbox = turf.bbox(feat);
+      map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], {
+        padding: 60, duration: 900, essential: true
+      });
+      applyLayerFilter();
+    });
+  }
+
+})();
+</script>
+
+</body>
+</html>

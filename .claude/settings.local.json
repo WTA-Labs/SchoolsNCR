@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(dir \"F:\\\\2025 Labs\\\\2509A-G\\\\02-INP\\\\02E-INT\\\\0526-Ref01\\\\qgis2web-01-260526\\\\temp\\\\0528A\\\\102B\\\\qgis2web_2026_05_28-15_19_10_790297\" /s /b)",
+      "Bash(powershell -NoProfile -File -)",
+      "Bash(dir \"F:\\\\2025 Labs\\\\2509A-G\\\\02-INP\\\\02E-INT\\\\0526-Ref01\\\\qgis2web-01-260526\\\\layers\\\\BarangaysNCR_0.js\")",
+      "Bash(powershell -Command \"Get-Content 'F:\\\\2025 Labs\\\\2509A-G\\\\02-INP\\\\02E-INT\\\\0526-Ref01\\\\qgis2web-01-260526\\\\layers\\\\BarangaysPSA_SameAgePop_0.js' -TotalCount 1 | Select-Object -First 1\")",
+      "PowerShell($f = 'F:\\\\2025 Labs\\\\2509A-G\\\\02-INP\\\\02E-INT\\\\0526-Ref01\\\\qgis2web-01-260526\\\\layers\\\\BarangaysPSA_SameAgePop_0.js'; $content = Get-Content $f -Raw; $content.Substring\\(0, 500\\))",
+      "PowerShell($f = 'F:\\\\2025 Labs\\\\2509A-G\\\\02-INP\\\\02E-INT\\\\0526-Ref01\\\\qgis2web-01-260526\\\\layers\\\\BarangaysPSA_SameAgePop_0.js'; \\(Get-Item $f\\).Length / 1MB)",
+      "Bash(python3 -c 'import json,sys; d=json.load\\(open\\('\\\\''__TRACKED_VAR__'\\\\''\\)\\); f=d['\\\\''features'\\\\''][0]['\\\\''properties'\\\\'']; print\\('\\\\''Mun_City:'\\\\'', f.get\\('\\\\''Mun_City'\\\\'','\\\\''?'\\\\''\\), '\\\\''| Bgy_Name:'\\\\'', f.get\\('\\\\''Bgy_Name'\\\\'','\\\\''?'\\\\''\\), '\\\\''| count:'\\\\'', len\\(d['\\\\''features'\\\\'']\\)\\)')",
+      "PowerShell(Get-Command node -ErrorAction SilentlyContinue; Get-Command nodejs -ErrorAction SilentlyContinue; where.exe node 2>$null; $env:PATH -split ';' | Where-Object { $_ -match 'node' })",
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\\\\nodejs\" -ErrorAction SilentlyContinue; Get-ChildItem \"C:\\\\Program Files \\(x86\\)\\\\nodejs\" -ErrorAction SilentlyContinue; Test-Path \"C:\\\\Program Files\\\\nodejs\\\\node.exe\"; Test-Path \"$env:APPDATA\\\\npm\\\\node.exe\")"
+    ]
+  }
+}
