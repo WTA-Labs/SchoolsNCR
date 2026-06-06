@@ -92,7 +92,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
   transition: opacity .45s var(--ease);
 }
 #ls.out { opacity: 0; pointer-events: none; }
-#ls-logo { max-width: 33vw; width: auto; height: auto; object-fit: contain; }
+#ls-logo { max-width: 26vw; max-height: 22vh; width: auto; height: auto; object-fit: contain; }
 #ls-logo-fb { display: none; font-family: var(--f-head); font-weight: 700;
   font-size: 1.8rem; letter-spacing: .04em; }
 #ls-logo-fb span { color: var(--y); }
@@ -140,7 +140,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
 }
 
 #home-logo-top {
-  height: 180px; object-fit: contain; margin-bottom: 28px; margin-top: -100px;
+  height: 108px; object-fit: contain; margin-bottom: 28px; margin-top: -60px;
   opacity: .94; align-self: flex-start; max-width: 100%;
 }
 
@@ -192,20 +192,56 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
   box-shadow: 0 6px 24px rgba(0,0,0,.22); }
 #home-btn:active { transform: translateY(0); }
 #home-btn svg    { width: 15px; height: 15px; }
+/* ── Home screen — development notice ── */
+#home-dev-notice {
+  margin-top: 24px; padding: 10px 14px;
+  border-left: 3px solid var(--y);
+  background: rgba(255,207,0,0.07);
+  border-radius: 0 6px 6px 0;
+  max-width: 320px;
+  position: relative; z-index: 1;
+}
+#home-dev-notice .dev-tag {
+  font-family: var(--f-mono); font-size: .58rem; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--y-d);
+  margin-bottom: 5px; display: block;
+}
+#home-dev-notice p {
+  font-family: var(--f-body); font-size: .75rem;
+  color: var(--txt-mid); line-height: 1.6; margin: 0;
+}
 
 /* ══════════════════════════════════════════
    §4  APP SHELL
 ══════════════════════════════════════════ */
 #app { position: fixed; inset: 0; }
 
-/* ── Floating map title ── */
-#map-title {
-  position: absolute; top: 14px; left: 30px; z-index: 300;
+/* ── Floating map title — hidden (title now lives inside #about-panel) ── */
+#map-title { display: none; }
+
+/* ── GeoCite logo — upper-left map overlay ── */
+#geocite-logo {
+  position: absolute; top: 14px; left: 14px; z-index: 300;
   pointer-events: none; user-select: none;
-  opacity: 0; transform: translateY(-8px);
+  opacity: 0; transform: translateY(-6px);
   transition: opacity .5s var(--ease), transform .5s var(--ease);
 }
-#map-title.in { opacity: 1; transform: none; }
+#geocite-logo.in { opacity: 1; transform: none; }
+#geocite-logo img { height: 76px; width: auto; object-fit: contain; display: block; }
+
+/* ── About-panel title section — yellow-tinted header ── */
+#ap-title {
+  background: rgba(255,207,0,0.13);
+  padding: 14px 15px 12px;
+  border-bottom: 1px solid rgba(255,207,0,0.28);
+}
+#ap-title .mt-title {
+  font-size: 1.25rem; text-shadow: none; margin-bottom: 2px;
+}
+#ap-title .mt-subtitle {
+  text-shadow: none; margin-bottom: 4px;
+}
+#ap-title .mt-sub { text-shadow: none; }
 .mt-title {
   font-family: var(--f-display); font-weight: 900;
   font-size: 1.5rem; line-height: 1.15; color: #000;
@@ -976,7 +1012,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
      LOADING SCREEN
 ══════════════════════════════════════ -->
 <div id="ls" role="status" aria-label="Loading dashboard">
-  <img id="ls-logo" src="external-assets/name-logo_1.png" alt="WTA Labs"
+  <img id="ls-logo" src="external-assets/GeoCite Full Log0-small ver.png" alt="GeoCite"
        onerror="this.style.display='none';document.getElementById('ls-logo-fb').style.display='block'">
   <div id="ls-logo-fb">WTA <span>Labs</span></div>
   <div id="ls-track" role="progressbar" aria-valuenow="0" aria-valuemax="100">
@@ -990,7 +1026,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
 ══════════════════════════════════════ -->
 <div id="home" aria-label="Project introduction" hidden>
   <div id="home-left">
-    <img id="home-logo-top" src="external-assets/name-logo_1.png" alt="WTA Labs"
+    <img id="home-logo-top" src="external-assets/GeoCite Full Log0-small ver.png" alt="GeoCite"
          onerror="this.style.display='none'">
     <p id="home-by">Study by WTA Labs</p>
     <h1 id="home-title">Schools<br>Catchment<br><span>Dashboard</span></h1>
@@ -1003,6 +1039,10 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
       </svg>
       Enter Map
     </button>
+    <div id="home-dev-notice" role="note">
+      <span class="dev-tag">Work in Progress</span>
+      <p>This dashboard is currently under active development by WTA Labs. Features, data layers, and spatial analysis outputs are subject to change. Please interpret results with appropriate caution.</p>
+    </div>
   </div>
   <div id="home-right">
     <div id="home-right-fade"></div>
@@ -1019,6 +1059,12 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
 
   <!-- About floating panel -->
   <aside id="about-panel" aria-label="About this map">
+    <!-- Title section — yellow-tinted, keeps original font characteristics -->
+    <div id="ap-title">
+      <div class="mt-title">Schools in Metro Manila</div>
+      <div class="mt-subtitle">Mapping Schools and Catchments</div>
+      <div class="mt-sub">NCR · Metro Manila · Philippines</div>
+    </div>
     <section class="lp-sec" aria-labelledby="lp-about">
       <p class="lp-hd" id="lp-about">About</p>
       <p class="ctx">Spatial analysis of school catchment areas across the National Capital
@@ -1289,11 +1335,10 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
       </div>
     </nav>
 
-    <!-- Floating map title -->
-    <div id="map-title" aria-label="Map title">
-      <div class="mt-title">Schools in Metro Manila</div>
-      <div class="mt-subtitle">Mapping Schools and Catchments</div>
-      <div class="mt-sub">NCR · Metro Manila · Philippines</div>
+    <!-- GeoCite logo — upper-left corner of the map -->
+    <div id="geocite-logo" aria-label="GeoCite">
+      <img src="external-assets/GeoCite Full Log0-small ver.png" alt="GeoCite"
+           onerror="this.style.display='none'">
     </div>
 
     <!-- MapLibre map canvas -->
@@ -2130,7 +2175,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
   const RETREAT_ZOOM = 6;
   let inMapMode = false;
 
-  const PANEL_IDS = ['map-title', 'about-panel', 'lp', 'rp', 'tnav', 'blp', 'corner-logo'];
+  const PANEL_IDS = ['about-panel', 'lp', 'rp', 'tnav', 'blp', 'corner-logo', 'geocite-logo'];
 
   function showHome() {
     const hs = document.getElementById('home');
@@ -2152,10 +2197,10 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
 
     /* 3. Stagger dashboard panels in */
     setTimeout(() => {
-      document.getElementById('map-title').classList.add('in');
       document.getElementById('about-panel').classList.add('in');
       document.getElementById('lp').classList.add('in');
       document.getElementById('corner-logo').classList.add('in');
+      document.getElementById('geocite-logo')?.classList.add('in');
       setTimeout(() => document.getElementById('blp').classList.add('in'),  60);
       setTimeout(() => document.getElementById('rp').classList.add('in'),  120);
       setTimeout(() => document.getElementById('tnav').classList.add('in'), 250);
@@ -2177,7 +2222,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
     if (!hs) return;
 
     /* Stagger panels out (reverse order) */
-    ['tnav', 'rp', 'blp', 'corner-logo', 'lp', 'about-panel', 'map-title'].forEach((id, i) => {
+    ['tnav', 'rp', 'blp', 'geocite-logo', 'corner-logo', 'lp', 'about-panel'].forEach((id, i) => {
       setTimeout(() => document.getElementById(id)?.classList.remove('in'), i * 55);
     });
     /* Hide search bars when returning to home */
@@ -2974,8 +3019,16 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
 
     INTERACTIVE_LAYERS.forEach(({ layerId, source }) => {
       map.on('mousemove', layerId, e => {
-        /* Cities yield to higher-priority layers */
+        /* Cities yield to higher-priority layers, and are not interactive at street-level zoom */
         if (layerId === 'cities-fill') {
+          if (map.getZoom() >= 14) {
+            if (hoveredSrc === 'cities' && hoveredId !== null) {
+              map.setFeatureState({ source: 'cities', id: hoveredId }, { hover: false });
+              hoveredId = null; hoveredSrc = null;
+            }
+            map.getCanvas().style.cursor = '';
+            return;
+          }
           const above = map.queryRenderedFeatures(e.point, {
             layers: HIGH_PRIORITY_LAYERS.filter(id =>
               map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none'
@@ -3012,6 +3065,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
     /* Click → right panel + feature selection highlight */
     INTERACTIVE_LAYERS.forEach(({ layerId, source, label }) => {
       map.on('click', layerId, e => {
+        /* Cities are not selectable at street-level zoom */
+        if (layerId === 'cities-fill' && map.getZoom() >= 14) return;
         const feat = e.features[0];
 
         /* Clear previous map-click selection */
@@ -3869,17 +3924,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #111;
   let _currentBgyNcrCode = null;
 
   function showBgyNcrPanel(bgyCode, bgyName) {
+    /* Store code so the Bgy (NCR) toggle in the search bar can look it up when the user checks it */
     _currentBgyNcrCode = bgyCode || null;
-    /* Auto-check toggle and show NCR outline immediately */
-    const toggle = document.getElementById('bgy-ncr-toggle');
-    if (toggle) toggle.checked = true;
-    const feat = _currentBgyNcrCode && window._mbByBgyCode
-      ? window._mbByBgyCode[_currentBgyNcrCode] : null;
-    const hlSrc = map.getSource('bgy-ncr-hl');
-    if (hlSrc) hlSrc.setData({ type: 'FeatureCollection', features: feat ? [feat] : [] });
-    /* Ensure Barangays (NCR) layer is visible */
-    const mbChk = document.getElementById('lp-mb');
-    if (mbChk && !mbChk.checked) { mbChk.checked = true; setVis(['mb-fill', 'mb-line'], true); }
   }
 
   function closeBgyNcrPanel() {
